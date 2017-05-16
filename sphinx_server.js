@@ -1,10 +1,16 @@
 
-const net = require('net');
+const https = require('https');
+const fs = require('fs');
 
+const ws = require('ws');
+
+
+const tls_options = {
+    key: fs.readFileSync('sphinx-test-key.pem'),
+    cert: fs.readFileSync('sphinx-test-cert.pem')
+};
 const listen_options = {
-    host: '0.0.0.0',
-    port: 50000,
-    exclusive: true
+    port: 50000
 };
 
 
@@ -45,12 +51,12 @@ let handle_server_connection = function( socket ) {
     
     console.log( message );
     
-    socket.on( 'close', handle_socket_close );
-    socket.on( 'timeout', handle_socket_timeout );
-    socket.on( 'error', handle_socket_error );
-    socket.on( 'data', handle_socket_data );
+    //socket.on( 'close', handle_socket_close );
+    //socket.on( 'timeout', handle_socket_timeout );
+    //socket.on( 'error', handle_socket_error );
+    socket.on( 'message', handle_socket_data );
     
-    socket.write( 'hello!' );
+    socket.send('__test__');
 };
 
 let handle_server_close = function( had_error ) {
@@ -72,10 +78,20 @@ let handle_server_listen = function() {
 }
 
 
+let handle_server_request = function( request, response ) {
+    res.writeHead(500);
+}
 
-let server = net.createServer( handle_server_connection );
-server.on( 'close', handle_server_close );
-server.on( 'error', handle_server_error );
 
-server.listen( listen_options, handle_server_listen );
+let httpsServer = https.createServer( tls_options, handle_server_request );
+
+httpsServer.listen( listen_options.port );
+
+
+
+let wss = new ws.Server({ server: httpsServer });
+
+wss.on( 'connection', handle_server_connection );
+
+
 
