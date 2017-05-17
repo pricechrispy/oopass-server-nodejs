@@ -1,5 +1,11 @@
 
 
+
+// REQUIRE JS LIBS
+const lib_ecc = require('./lib_ecc.js');
+
+
+
 // REQUIRE NECECESSARY MODULES
 const https = require('https');
 const ws    = require('ws');
@@ -13,6 +19,9 @@ const tls_options = {
 };
 const listen_options = {
     port: 50000
+};
+const ecc_options = {
+    oprf_key: '123456789abcdef03456789abcdef012'
 };
 
 
@@ -56,6 +65,40 @@ let handle_socket_data = function( data, flags ) {
     
     console.log( message );
     console.log( flags );
+    
+    let data_array = data.toString().split(",");
+    
+    if ( data_array.length === 2 )
+    {
+        let x = data_array[0];
+        let y = data_array[1];
+        
+        console.log( 'RECEIVED X,Y CURVE POINTS (' + x + ', ' + y + ')' );
+        
+        let alpha_decoded = lib_ecc.decodePoint( x, y );
+        
+        console.log( 'DECODED' );
+        //console.log( decoded );
+        
+        var is_hashed_pwd_point_member = lib_ecc.pointMember( alpha_decoded );
+        
+        if ( is_hashed_pwd_point_member )
+        {
+            console.log( 'Point is a member of curve' );
+            
+            var beta_key = new lib_ecc.BigInteger( ecc_options.oprf_key, 16 );
+            var beta = lib_ecc.encodePoint( alpha_decoded.multiply( beta_key ) );
+            
+            console.log( 'Sending Beta' );
+            console.log( beta );
+            
+            this.send( beta );
+        }
+        else
+        {
+            console.log( 'Point is NOT a member of curve' );
+        }
+    }
 };
 
 // Handle when a socket connection closes
