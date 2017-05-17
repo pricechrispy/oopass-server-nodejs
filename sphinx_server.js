@@ -1,12 +1,14 @@
 
+
+// REQUIRE NECECESSARY MODULES
 const https = require('https');
-const fs = require('fs');
+const ws    = require('ws');
+const fs    = require('fs');
 
-const ws = require('ws');
 
-
+// SETUP SERVER OPTIONS
 const tls_options = {
-    key: fs.readFileSync('sphinx-test-key.pem'),
+    key:  fs.readFileSync('sphinx-test-key.pem'),
     cert: fs.readFileSync('sphinx-test-cert.pem')
 };
 const listen_options = {
@@ -15,83 +17,167 @@ const listen_options = {
 
 
 
-/* SOCKET LISTENERS */
+/* WEBSOCKET CLASS LISTENERS */
 
-let handle_socket_close = function() {
-    let message = 'Socket closed!';
+// Handle established connection
+let handle_socket_open = function() {
+    let message = 'Socket connection established';
     
     console.log( message );
 };
 
-let handle_socket_timeout = function() {
-    let message = 'Socket timed out!';
+// Read headers received
+let handle_socket_headers = function( headers, response ) {
+    let message = 'Headers received';
     
     console.log( message );
-    
-    this.end();
+    console.log( headers );
 };
 
+// Handle received ping
+let handle_socket_ping = function( data, flags ) {
+    let message = 'Ping received: "' + data.toString() + '"';
+    
+    console.log( message );
+    console.log( flags );
+};
+
+// Handle received pong
+let handle_socket_pong = function( data, flags ) {
+    let message = 'Pong received: "' + data.toString() + '"';
+    
+    console.log( message );
+    console.log( flags );
+};
+
+// Handle socket messages
+let handle_socket_data = function( data, flags ) {
+    let message = 'Data received: "' + data.toString() + '"';
+    
+    console.log( message );
+    console.log( flags );
+};
+
+// Handle when a socket connection closes
+let handle_socket_close = function( code, reason ) {
+    let message = 'Socket closed (' + code.toString() + '): "' + reason + '"';
+    
+    console.log( message );
+};
+
+// Handle unexpected response
+let handle_socket_unexpected = function( request, response ) {
+    let message = 'Unexpected response received';
+    
+    console.log( message );
+    console.log( request );
+    console.log( response );
+};
+
+// Handle underlying net.Socket (and above) errors
 let handle_socket_error = function( error ) {
-    this.end();
+    let message = 'Socket error - terminating socket:';
+    
+    console.log( message );
+    console.log( error );   
+    
+    this.terminate();
     
     throw error;
 };
 
-let handle_socket_data = function( data ) {
-    let message = 'Data received: "' + data.toString() + '"';
+
+
+/* WEBSOCKET SERVER LISTENERS */
+
+// Handle after server bound
+let handle_server_listen = function() {
+    let message = 'Server listening on *:' + listen_options.port.toString();    
     
     console.log( message );
 };
 
+// Handle server/client handshake
+let handle_server_handshake = function( info ) {
+    let message = 'Accepting handshake:';    
+    
+    console.log( message );
+    //console.log( info );
+    
+    return true;
+};
 
+// Handle server/client protocol
+let handle_server_protocol = function( protocols, request ) {
+    let message = 'Accepting protocols:';    
+    
+    console.log( message );
+    console.log( protocols );
+    
+    return '';
+};
 
-/* SERVER LISTENERS */
+// Handle headers before handshake
+let handle_server_headers = function( headers, request ) {
+    let message = 'Sending headers...';
+    
+    console.log( message );
+    console.log( headers );
+};
+
+// Handshake is complete: socket is an instance of WebSocket
 let handle_server_connection = function( socket ) {
     let message = 'Client connected';
     
     console.log( message );
     
-    //socket.on( 'close', handle_socket_close );
-    //socket.on( 'timeout', handle_socket_timeout );
-    //socket.on( 'error', handle_socket_error );
+    socket.on( 'open', handle_socket_open );
+    socket.on( 'headers', handle_socket_headers );
+    socket.on( 'ping', handle_socket_ping );
+    socket.on( 'pong', handle_socket_pong );
     socket.on( 'message', handle_socket_data );
+    socket.on( 'close', handle_socket_close );
+    socket.on( 'unexpected-response', handle_socket_unexpected );
+    socket.on( 'error', handle_socket_error );
     
-    socket.send('__test__');
+    socket.send('__server_connected__');
 };
 
-let handle_server_close = function( had_error ) {
-    let message = 'Closing... had error: ' + had_error.toString();
-    
-    console.log( message );
-};
-
+// Handle server error
 let handle_server_error = function( error ) {
-    server.close();
+    
     
     throw error;
 };
 
-let handle_server_listen = function() {
-    let message = 'Server listening on ' + listen_options.host.toString() + ':' + listen_options.port.toString();    
+
+/* HTTPS (TLS) SERVER LISTENERS */
+
+// Handle normal https server requests (non-websocket)
+let handle_https_server_request = function( request, response ) {
     
-    console.log( message );
-}
+};
 
 
-let handle_server_request = function( request, response ) {
-    res.writeHead(500);
-}
-
-
-let httpsServer = https.createServer( tls_options, handle_server_request );
+// START THE BASE HTTPS (TLS) SERVER
+let httpsServer = https.createServer( tls_options, handle_https_server_request );
 
 httpsServer.listen( listen_options.port );
 
 
+// START WEBSOCKET SERVER ON AN HTTPS SERVER
+let websocket_server_options = {
+    server: httpsServer,
+    verifyClient: handle_server_handshake,
+    handleProtocols: handle_server_protocol
+};
 
-let wss = new ws.Server({ server: httpsServer });
+let wss = new ws.Server( websocket_server_options );
 
+wss.on( 'listening', handle_server_listen );
+wss.on( 'headers', handle_server_headers );
 wss.on( 'connection', handle_server_connection );
+wss.on( 'error', handle_server_error );
 
 
 
