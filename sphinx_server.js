@@ -3,6 +3,7 @@
 
 // REQUIRE JS LIBS
 const lib_ecc = require('./lib_ecc.js');
+const crypto  = require('crypto');
 
 
 
@@ -20,8 +21,10 @@ const tls_options = {
 const listen_options = {
     port: 50000
 };
-const ecc_options = {
-    oprf_key: '123456789abcdef03456789abcdef012'
+const aes_options = {
+    algorithm: 'aes-256-ctr',
+    key:       '123456789abcdef03456789abcdef012',
+    plaintext: '00000000000000000000000000000000' // 256bits
 };
 
 
@@ -68,17 +71,18 @@ let handle_socket_data = function( data, flags ) {
     
     let data_array = data.toString().split(",");
     
-    if ( data_array.length === 2 )
+    if ( data_array.length === 3 )
     {
-        let x = data_array[0];
-        let y = data_array[1];
+        let x         = data_array[0];
+        let y         = data_array[1];
+        let user_hash = data_array[2];
         
         console.log( 'RECEIVED X,Y CURVE POINTS (' + x + ', ' + y + ')' );
+        console.log( 'RECEIVED USER HASH: ' + user_hash );
         
         let alpha_decoded = lib_ecc.decodePoint( x, y );
         
         console.log( 'DECODED' );
-        //console.log( decoded );
         
         var is_hashed_pwd_point_member = lib_ecc.pointMember( alpha_decoded );
         
@@ -86,8 +90,31 @@ let handle_socket_data = function( data, flags ) {
         {
             console.log( 'Point is a member of curve' );
             
-            var beta_key = new lib_ecc.BigInteger( ecc_options.oprf_key, 16 );
-            var beta = lib_ecc.encodePoint( alpha_decoded.multiply( beta_key ) );
+            let user_aes_ctr_offset = 0;
+            
+            let is_hash_in_db = false;
+            
+            if ( is_hash_in_db )
+            {
+                //user_aes_ctr_offset = record['ctr_offset'];
+            }
+            
+            console.log( 'User CTR offset: ' + user_aes_ctr_offset.toString() );
+            
+            const sha_256 = crypto.createHash('sha256').update( user_hash + user_aes_ctr_offset.toString() );
+            let hash_ctr  = sha_256.digest().slice(0, 16); //buffer object, 16*8 = 128bit block size
+            
+            console.log( 'User hash with offset: ' + hash_ctr.toString('hex') );
+            
+            const aes_ctr_256 = crypto.createCipheriv( aes_options.algorithm, aes_options.key, hash_ctr );
+            let encrypted     = aes_ctr_256.update( aes_options.plaintext, 'utf8', 'hex' );
+            
+            let oprf_key = encrypted; //reduce modulo q
+            
+            console.log( 'Calculated user OPRF key: ' + oprf_key );
+            
+            var beta_key = new lib_ecc.BigInteger( oprf_key, 16 );
+            var beta     = lib_ecc.encodePoint( alpha_decoded.multiply( beta_key ) );
             
             console.log( 'Sending Beta' );
             console.log( beta );
