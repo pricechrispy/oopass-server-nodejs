@@ -1,6 +1,6 @@
 
-window = {};
-navigator = {};
+window            = {};
+navigator         = {};
 navigator.appName = '';
 
 
@@ -2899,4 +2899,7 @@ exports.pointMember = pointMember;
 exports.BigInteger = BigInteger;
 
 
+
+window    = undefined;
+navigator = undefined;
 
