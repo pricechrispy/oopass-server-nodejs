@@ -8,9 +8,11 @@ const crypto  = require('crypto');
 
 
 // REQUIRE NECECESSARY MODULES
-const https = require('https');
-const ws    = require('ws');
-const fs    = require('fs');
+const http     = require('http');
+const https    = require('https');
+const ws       = require('ws');
+const fs       = require('fs');
+const arangojs = require('arangojs');
 
 
 // SETUP SERVER OPTIONS
@@ -25,6 +27,156 @@ const aes_options = {
     algorithm: 'aes-256-ctr',
     key:       '123456789abcdef03456789abcdef012',
     plaintext: '00000000000000000000000000000000' // 256bits
+};
+const database_options = {
+    host:       '127.0.0.1',
+    port:       '8529',
+    name:       'sphinx',
+    collection: 'users',
+    username:   'sphinx',
+    password:   'sphinx'
+};
+
+
+
+/* DATABASE */
+
+let database_config = {
+    url:          'http://' + database_options.host + ':' + database_options.port,
+    databaseName: database_options.name
+};
+
+console.log( 'Attempting connection to database server' );
+console.log( database_config );
+
+const db = new arangojs.Database( database_config );
+db.useBasicAuth( database_options.username, database_options.password );
+
+const users = db.collection( database_options.collection );
+
+
+// check if database is online and exit if inaccessible
+console.log( 'Requesting database server status' );
+
+let request_options = {
+    hostname: database_options.host,
+    port:     database_options.port,
+    timeout:  3000
+};
+
+let handle_request = function( response ) {
+    let message = 'Database server seems to be running';    
+    
+    console.log( message );
+};
+
+let handle_request_socket = function( socket ) {
+    socket.setTimeout( request_options.timeout );
+    
+    socket.on( 'timeout', handle_request_socket_timeout );
+};
+
+let handle_request_socket_timeout = function() {
+    let message = 'Socket timeout while contacting database server, aborting request';
+
+    console.log( message );
+    
+    server_up_request.abort();
+};
+
+let handle_request_error = function( error ) {
+    let message = 'Database server request failed: ' + error.message;
+    
+    console.log( message );
+    
+    console.log( 'Exiting' );
+    process.exit(1);
+};
+
+const server_up_request = http.request( request_options, handle_request );
+
+server_up_request.on('socket', handle_request_socket );
+server_up_request.on('error', handle_request_error );
+
+server_up_request.end();
+
+
+let process_beta_response = async function( web_socket, user_hash, alpha_decoded ) {
+    let user_aes_ctr_offset = 0;
+    
+    try {
+        console.log( 'Attempting retreival of user_hash: ' + user_hash.toString() );
+        
+        const data = await users.document( user_hash );
+        
+        console.log( 'Received data for user_hash: ' + user_hash.toString() );
+
+        console.log( data );
+        
+        user_aes_ctr_offset = data.ctr_offset;
+    }
+    catch ( err ) {
+        console.log( 'Error retreiving record ' + user_hash.toString() + ': ' + err.errorNum.toString() );
+        
+        if ( err.errorNum === 1202 ) // 1202 === ERROR_ARANGO_DOCUMENT_NOT_FOUND
+        {
+            console.log( 'Document not found' );
+            
+            let new_user_record = { _key: user_hash, ctr_offset: user_aes_ctr_offset };
+            
+            create_ctr_record( new_user_record );
+        }
+        else
+        {
+            console.log( err.stack );
+        }
+    }
+    
+    console.log( 'User CTR offset: ' + user_aes_ctr_offset.toString() );
+    
+    const sha_256 = crypto.createHash('sha256').update( user_hash + user_aes_ctr_offset.toString() );
+    let hash_ctr  = sha_256.digest().slice(0, 16); //buffer object, 16*8 = 128bit block size
+    
+    console.log( 'User hash with offset: ' + hash_ctr.toString('hex') );
+    
+    const aes_ctr_256 = crypto.createCipheriv( aes_options.algorithm, aes_options.key, hash_ctr );
+    let encrypted     = aes_ctr_256.update( aes_options.plaintext, 'utf8', 'hex' );
+    
+    let oprf_key = encrypted; //reduce modulo q
+    
+    console.log( 'Calculated user OPRF key: ' + oprf_key );
+    
+    let beta_key = new lib_ecc.BigInteger( oprf_key, 16 );
+    let beta     = lib_ecc.encodePoint( alpha_decoded.multiply( beta_key ) );
+    
+    console.log( 'Sending Beta' );
+    console.log( beta );
+    
+    web_socket.send( beta );
+};
+
+let create_ctr_record = async function( data ) {
+    try {
+        console.log( 'Attempting save of ' + data._key + ': ' + data.ctr_offset );
+        
+        const response = await users.save( data );
+        
+        console.log( 'Received response for save of ' + data._key + ': ' + data.ctr_offset );
+
+        console.log( response );
+    }
+    catch ( err ) {
+        console.log( 'Error saving record ' + data._key + ': ' + err.errorNum.toString() );
+        
+        if ( err.errorNum === 1210 ) // 1210 === ERROR_ARANGO_UNIQUE_CONSTRAINT_VIOLATED
+        {
+            console.log( 'Document already exists with _key: ' + data._key );
+        }
+        else
+        {
+            console.log( err.stack );
+        }
+    }
 };
 
 
@@ -84,42 +236,13 @@ let handle_socket_data = function( data, flags ) {
         
         console.log( 'DECODED' );
         
-        var is_hashed_pwd_point_member = lib_ecc.pointMember( alpha_decoded );
+        let is_hashed_pwd_point_member = lib_ecc.pointMember( alpha_decoded );
         
         if ( is_hashed_pwd_point_member )
         {
             console.log( 'Point is a member of curve' );
             
-            let user_aes_ctr_offset = 0;
-            
-            let is_hash_in_db = false;
-            
-            if ( is_hash_in_db )
-            {
-                //user_aes_ctr_offset = record['ctr_offset'];
-            }
-            
-            console.log( 'User CTR offset: ' + user_aes_ctr_offset.toString() );
-            
-            const sha_256 = crypto.createHash('sha256').update( user_hash + user_aes_ctr_offset.toString() );
-            let hash_ctr  = sha_256.digest().slice(0, 16); //buffer object, 16*8 = 128bit block size
-            
-            console.log( 'User hash with offset: ' + hash_ctr.toString('hex') );
-            
-            const aes_ctr_256 = crypto.createCipheriv( aes_options.algorithm, aes_options.key, hash_ctr );
-            let encrypted     = aes_ctr_256.update( aes_options.plaintext, 'utf8', 'hex' );
-            
-            let oprf_key = encrypted; //reduce modulo q
-            
-            console.log( 'Calculated user OPRF key: ' + oprf_key );
-            
-            var beta_key = new lib_ecc.BigInteger( oprf_key, 16 );
-            var beta     = lib_ecc.encodePoint( alpha_decoded.multiply( beta_key ) );
-            
-            console.log( 'Sending Beta' );
-            console.log( beta );
-            
-            this.send( beta );
+            process_beta_response( this, user_hash, alpha_decoded );
         }
         else
         {
@@ -162,7 +285,7 @@ let handle_socket_error = function( error ) {
 
 // Handle after server bound
 let handle_server_listen = function() {
-    let message = 'Server listening on *:' + listen_options.port.toString();    
+    let message = 'Secure WebSocket server listening on *:' + listen_options.port.toString();    
     
     console.log( message );
 };
