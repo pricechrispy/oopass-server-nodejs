@@ -16,12 +16,17 @@ const arangojs = require('arangojs');
 
 
 // SETUP SERVER OPTIONS
+const script_name = 'sphinx_server.js';
 const tls_options = {
     key:  fs.readFileSync('sphinx-test-key.pem'),
     cert: fs.readFileSync('sphinx-test-cert.pem')
 };
 const listen_options = {
-    port: 50000
+    port:        50000,
+    role:        'MASTER',
+    slave_count: 1,
+    slaves:      new Array(),
+    slave_pool:  'EVEN'
 };
 const aes_options = {
     algorithm: 'aes-256-ctr',
@@ -36,6 +41,69 @@ const database_options = {
     username:   'sphinx',
     password:   'sphinx'
 };
+
+
+
+/* PROGRAM ARGUMENTS */
+if ( process.argv.length >= 3 )
+{
+    let program_first_argument  = process.argv[2];
+    let program_second_argument = process.argv[3];
+    let program_third_argument  = process.argv[4];
+    
+    listen_options.port = parseInt( program_first_argument, 10 );
+    
+    if ( program_second_argument === 'MASTER' )
+    {
+        listen_options.slave_count = parseInt( program_third_argument, 10 );
+    }
+    else
+    {
+        listen_options.role = 'SLAVE';
+    }
+}
+else
+{
+    console.log( 'Usage: node sphinx_server.js PORT SERVER_ROLE [SLAVE_COUNT]' );
+    console.log( 'SERVER_ROLE can be one of MASTER or SLAVE' );
+    console.log( 'SLAVE_COUNT is the number of slaves to generate for a SERVER_ROLE of MASTER' );
+    
+    process.exit(1);
+}
+
+console.log( 'Server configured as follows:' );
+console.log( listen_options );
+
+if ( listen_options.role === 'MASTER' )
+{
+    const { spawn } = require('child_process');
+    
+    console.log( 'SERVER CONFIGURED AS MASTER, SPAWNING SLAVES ' + listen_options.slave_count.toString() );
+    
+    for ( let i = 0; i < listen_options.slave_count; i++ )
+    {
+        let slave_number = i + 1;
+        let slave_port   = ( listen_options.port + slave_number ).toString();
+        
+        console.log( 'Spawning slave ' + slave_number.toString() + ' on *:' + slave_port );
+        
+        let slave_options = [ script_name, slave_port, 'SLAVE' ];
+        
+        listen_options.slaves[ i ] = spawn( 'node', slave_options );
+        
+        //listen_options.slaves[ i ].stdout.on('data', (data) => {
+        //    console.log(`SLAVE ${slave_number} => stdout: ${data}`);
+        //});
+
+        //listen_options.slaves[ i ].stderr.on('data', (data) => {
+        //    console.log(`SLAVE ${slave_number} => stderr: ${data}`);
+        //});
+
+        listen_options.slaves[ i ].on('close', (code) => {
+            console.log(`SLAVE ${slave_number} => child process exited with code ${code}`);
+        });
+    }
+}
 
 
 
@@ -274,34 +342,143 @@ let handle_socket_data = function( data, flags ) {
     console.log( message );
     console.log( flags );
     
-    let data_array = data.toString().split(",");
+    let data_array = data.toString().split(',');
     
     if ( data_array.length === 4 )
     {
-        let x                     = data_array[0];
-        let y                     = data_array[1];
-        let user_hash             = data_array[2];
-        let user_requested_offset = data_array[3];
-        
-        console.log( 'RECEIVED X,Y CURVE POINTS (' + x + ', ' + y + ')' );
-        console.log( 'RECEIVED USER HASH: ' + user_hash );
-        console.log( 'RECEIVED REQUESTED OFFSET: ' + user_requested_offset );
-        
-        let alpha_decoded = lib_ecc.decodePoint( x, y );
-        
-        console.log( 'DECODED' );
-        
-        let is_hashed_pwd_point_member = lib_ecc.pointMember( alpha_decoded );
-        
-        if ( is_hashed_pwd_point_member )
+        if ( listen_options.role === 'MASTER' )
         {
-            console.log( 'Point is a member of curve' );
+            console.log( 'ROLE IS MASTER, DELEGATING REQUESTS TO SLAVES' );
             
-            process_beta_response( this, user_hash, user_requested_offset, alpha_decoded );
+            let slave_responses = new Array();
+            
+            let handle_slave_responses = function( web_socket )
+            {
+                console.log( '========================================' );
+                console.log( 'Received all slave responses' );
+                
+                let response_count = {};
+                
+                // index slaves by their response
+                for ( let i = 0; i < slave_responses.length; i++ )
+                {
+                    let slave_response = slave_responses[ i ];
+                    
+                    if ( !response_count.hasOwnProperty( slave_response ) )
+                    {
+                        response_count[ slave_response ] = 0;
+                    }
+                    
+                    response_count[ slave_response ]++;
+                }
+                
+                // trust response with largest slave commitment
+                let trusted_response       = '';
+                let trusted_response_count = 0;
+                
+                for ( var [ key, value ] of Object.entries( response_count ) ) {
+                    //console.log( key + ' ' + value );
+                    
+                    if ( value > trusted_response_count )
+                    {
+                        trusted_response_count = value;
+                        trusted_response       = key;
+                    }
+                }
+                
+                console.log( trusted_response_count.toString() + ' slaves responded with ' + trusted_response );
+                
+                console.log( 'Sending trusted Beta response back to client' );
+                console.log( trusted_response );
+                
+                web_socket.send( trusted_response );
+            };
+            
+            // Delegate requests to chosen slaves
+            // Most responded value will be chosen to defend against bad nodes
+            console.log( 'Current queue has pool: ' + listen_options.slave_pool );
+            let current_slave_connections = 0;
+            
+            for ( let i = 0; i < listen_options.slaves.length; i++ )
+            {
+                let slave_number = i + 1;
+                let slave_port   = ( listen_options.port + slave_number ).toString();
+                
+                let is_even_match = listen_options.slave_pool === 'EVEN' && slave_number % 2 === 0;
+                let is_odd_match  = listen_options.slave_pool === 'ODD' && slave_number % 2 === 1;
+                
+                // Only send to the active slave pool
+                if ( is_even_match || is_odd_match )
+                {
+                    console.log( 'Sending to slave ' + slave_number.toString() + ' on *:' + slave_port );
+                    current_slave_connections++;
+                    
+                    let client_web_socket = this;
+                    
+                    let slave_connection = new ws( 'wss://127.0.0.1:' + slave_port, '', {rejectUnauthorized: false} );
+                    
+                    slave_connection.on( 'error', handle_socket_error );
+                    
+                    slave_connection.on( 'message', function( slave_data, slave_flags ) {
+                        console.log( 'SLAVE ' + slave_number.toString() + ' data' );
+                        console.log( slave_data );
+                        
+                        let slave_data_array = slave_data.toString().split(',');
+                        
+                        if ( slave_data_array.length === 2 )
+                        {
+                            slave_responses.push( slave_data );
+                            
+                            if ( slave_responses.length === current_slave_connections )
+                            {
+                                handle_slave_responses( client_web_socket );
+                            }
+                        }
+                    });
+                    
+                    slave_connection.on('open', function() {
+                        slave_connection.send( data );
+                    });
+                }
+            }
+            
+            // Switch to other slave pool
+            if ( listen_options.slave_pool === 'EVEN' )
+            {
+                listen_options.slave_pool = 'ODD'
+            }
+            else
+            {
+                listen_options.slave_pool = 'EVEN';
+            }
         }
         else
         {
-            console.log( 'Point is NOT a member of curve' );
+            let x                     = data_array[0];
+            let y                     = data_array[1];
+            let user_hash             = data_array[2];
+            let user_requested_offset = data_array[3];
+            
+            console.log( 'RECEIVED X,Y CURVE POINTS (' + x + ', ' + y + ')' );
+            console.log( 'RECEIVED USER HASH: ' + user_hash );
+            console.log( 'RECEIVED REQUESTED OFFSET: ' + user_requested_offset );
+            
+            let alpha_decoded = lib_ecc.decodePoint( x, y );
+            
+            console.log( 'DECODED' );
+            
+            let is_hashed_pwd_point_member = lib_ecc.pointMember( alpha_decoded );
+            
+            if ( is_hashed_pwd_point_member )
+            {
+                console.log( 'Point is a member of curve' );
+                
+                process_beta_response( this, user_hash, user_requested_offset, alpha_decoded );
+            }
+            else
+            {
+                console.log( 'Point is NOT a member of curve' );
+            }
         }
     }
 };
