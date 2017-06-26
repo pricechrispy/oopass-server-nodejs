@@ -175,8 +175,6 @@ let create_ctr_record = async function( data ) {
         
         console.log( 'Received response for save of ' + data._key + ': ' + data.ctr_offset );
         console.log( response );
-        
-        return response;
     }
     catch ( err ) {
         console.log( 'Error saving record ' + data._key + ': ' + err.errorNum.toString() );
