@@ -2,8 +2,11 @@
 SPHINX Server for Node.js
 
 ## Requires
+* WebSocket (ws): https://github.com/websockets/ws
+* ArangoDB (arangojs): https://github.com/arangodb/arangojs
 ```bash
 npm install ws
+npm install arangojs
 ```
 
 ## Usage
