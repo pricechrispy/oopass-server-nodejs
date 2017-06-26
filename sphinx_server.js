@@ -337,6 +337,9 @@ let handle_socket_error = function( error ) {
 
 
 /* WEBSOCKET SERVER LISTENERS */
+let connection_threshold          = 10;
+let connection_threshold_interval = 5000;
+let connections_by_address        = {};
 
 // Handle after server bound
 let handle_server_listen = function() {
@@ -375,9 +378,47 @@ let handle_server_headers = function( headers, request ) {
 
 // Handshake is complete: socket is an instance of WebSocket
 let handle_server_connection = function( socket ) {
-    let message = 'Client connected';
+    let current_time        = Date.now();
+    let current_time_string = new Date( current_time ).toUTCString();
+    
+    let client_address = socket.upgradeReq.connection.remoteAddress;
+    let client_port    = socket.upgradeReq.connection.remotePort;
+    
+    let message        = '[' + current_time_string + '] Client connected ' + client_address + ':' + client_port;
     
     console.log( message );
+    
+    if ( !connections_by_address.hasOwnProperty( client_address ) )
+    {
+        connections_by_address[ client_address ] = new Array();
+    }
+    
+    connections_by_address[ client_address ].push( current_time );
+    
+    let total_connections = connections_by_address[ client_address ].length;
+    
+    if ( total_connections == connection_threshold )
+    {
+        console.log( 'ADDRESS REACHED CONNECTION THRESHOLD (' + client_address + ')' );
+        
+        let connection_time_first = connections_by_address[ client_address ][ 0 ];
+        let connection_time_last  = connections_by_address[ client_address ][ total_connections - 1 ];
+        
+        let connection_time_elapsed = connection_time_last - connection_time_first;
+        console.log( 'Time elapsed between connections: ' + connection_time_elapsed + 'ms (' + client_address + ')' );
+        
+        // remove first (oldest) value
+        connections_by_address[ client_address ].shift();
+        
+        // If address connects too often in threshold period, assume service abuse
+        if ( connection_time_elapsed <= connection_threshold_interval )
+        {
+            console.log( 'SOCKET REACHED TOO MANY ATTEMPTS IN THRESHOLD, CLOSING SOCKET' + ' (' + client_address + ')' );
+            
+            socket.close();
+            return;
+        }
+    }
     
     socket.on( 'open', handle_socket_open );
     socket.on( 'headers', handle_socket_headers );
