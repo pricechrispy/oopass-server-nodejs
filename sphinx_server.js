@@ -101,7 +101,7 @@ server_up_request.on('error', handle_request_error );
 server_up_request.end();
 
 
-let process_beta_response = async function( web_socket, user_hash, alpha_decoded ) {
+let process_beta_response = async function( web_socket, user_hash, user_requested_offset, alpha_decoded ) {
     let user_aes_ctr_offset = 0;
     
     try {
@@ -110,10 +110,21 @@ let process_beta_response = async function( web_socket, user_hash, alpha_decoded
         const data = await users.document( user_hash );
         
         console.log( 'Received data for user_hash: ' + user_hash.toString() );
-
         console.log( data );
         
         user_aes_ctr_offset = data.ctr_offset;
+        
+        if ( user_aes_ctr_offset.toString() !== user_requested_offset )
+        {
+            console.log( 'DIFFERENT USER CTR OFFSET REQUESTED: ' + user_requested_offset );
+            
+            user_aes_ctr_offset = user_requested_offset;
+            
+            // update ctr record for user hash with requested value
+            data.ctr_offset = user_aes_ctr_offset;
+            
+            update_ctr_record( data );
+        }
     }
     catch ( err ) {
         console.log( 'Error retreiving record ' + user_hash.toString() + ': ' + err.errorNum.toString() );
@@ -122,6 +133,7 @@ let process_beta_response = async function( web_socket, user_hash, alpha_decoded
         {
             console.log( 'Document not found' );
             
+            // store new ctr record for user hash
             let new_user_record = { _key: user_hash, ctr_offset: user_aes_ctr_offset };
             
             create_ctr_record( new_user_record );
@@ -132,7 +144,7 @@ let process_beta_response = async function( web_socket, user_hash, alpha_decoded
         }
     }
     
-    console.log( 'User CTR offset: ' + user_aes_ctr_offset.toString() );
+    console.log( 'Using CTR offset: ' + user_aes_ctr_offset.toString() );
     
     const sha_256 = crypto.createHash('sha256').update( user_hash + user_aes_ctr_offset.toString() );
     let hash_ctr  = sha_256.digest().slice(0, 16); //buffer object, 16*8 = 128bit block size
@@ -162,8 +174,9 @@ let create_ctr_record = async function( data ) {
         const response = await users.save( data );
         
         console.log( 'Received response for save of ' + data._key + ': ' + data.ctr_offset );
-
         console.log( response );
+        
+        return response;
     }
     catch ( err ) {
         console.log( 'Error saving record ' + data._key + ': ' + err.errorNum.toString() );
@@ -178,6 +191,48 @@ let create_ctr_record = async function( data ) {
         }
     }
 };
+
+let update_ctr_record = async function( data ) {
+    try {
+        console.log( 'Attempting update of ' + data._key + ': ' + data.ctr_offset );
+        
+        const response = await users.update( data._id, {ctr_offset: data.ctr_offset} );
+        
+        console.log( 'Received response for update of ' + data._key + ': ' + data.ctr_offset );
+        console.log( response );
+    }
+    catch ( err ) {
+        console.log( 'Error saving record ' + data._key + ': ' + err.errorNum.toString() );
+        console.log( err.stack );
+    }
+};
+
+/*
+let get_ctr_records = async function() {
+    try {
+        const query  = arangojs.aql`
+            FOR user IN ${users}
+            RETURN user
+        `;
+        
+        const cursor = await db.query( query );
+        
+        let result = null;
+        
+        do {
+            result = await cursor.next();
+            
+            if ( typeof result != 'undefined' )
+            {
+                console.log( result );
+            }
+        } while ( typeof result != 'undefined' || result != null );
+    }
+    catch ( err ) {
+        console.log( err.stack );
+    }
+};
+*/
 
 
 
@@ -223,14 +278,16 @@ let handle_socket_data = function( data, flags ) {
     
     let data_array = data.toString().split(",");
     
-    if ( data_array.length === 3 )
+    if ( data_array.length === 4 )
     {
-        let x         = data_array[0];
-        let y         = data_array[1];
-        let user_hash = data_array[2];
+        let x                     = data_array[0];
+        let y                     = data_array[1];
+        let user_hash             = data_array[2];
+        let user_requested_offset = data_array[3];
         
         console.log( 'RECEIVED X,Y CURVE POINTS (' + x + ', ' + y + ')' );
         console.log( 'RECEIVED USER HASH: ' + user_hash );
+        console.log( 'RECEIVED REQUESTED OFFSET: ' + user_requested_offset );
         
         let alpha_decoded = lib_ecc.decodePoint( x, y );
         
@@ -242,7 +299,7 @@ let handle_socket_data = function( data, flags ) {
         {
             console.log( 'Point is a member of curve' );
             
-            process_beta_response( this, user_hash, alpha_decoded );
+            process_beta_response( this, user_hash, user_requested_offset, alpha_decoded );
         }
         else
         {
