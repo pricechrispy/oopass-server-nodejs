@@ -320,27 +320,24 @@ let handle_socket_headers = function( headers, response ) {
 };
 
 // Handle received ping
-let handle_socket_ping = function( data, flags ) {
+let handle_socket_ping = function( data ) {
     let message = 'Ping received: "' + data.toString() + '"';
     
     console.log( message );
-    console.log( flags );
 };
 
 // Handle received pong
-let handle_socket_pong = function( data, flags ) {
+let handle_socket_pong = function( data ) {
     let message = 'Pong received: "' + data.toString() + '"';
     
     console.log( message );
-    console.log( flags );
 };
 
 // Handle socket messages
-let handle_socket_data = function( data, flags ) {
+let handle_socket_data = function( data ) {
     let message = 'Data received: "' + data.toString() + '"';
     
     console.log( message );
-    console.log( flags );
     
     let data_array = data.toString().split(',');
     
@@ -419,7 +416,7 @@ let handle_socket_data = function( data, flags ) {
                     
                     slave_connection.on( 'error', handle_socket_error );
                     
-                    slave_connection.on( 'message', function( slave_data, slave_flags ) {
+                    slave_connection.on( 'message', function( slave_data ) {
                         console.log( 'SLAVE ' + slave_number.toString() + ' data' );
                         console.log( slave_data );
                         
@@ -554,12 +551,12 @@ let handle_server_headers = function( headers, request ) {
 };
 
 // Handshake is complete: socket is an instance of WebSocket
-let handle_server_connection = function( socket ) {
+let handle_server_connection = function( socket, tls_request ) {
     let current_time        = Date.now();
     let current_time_string = new Date( current_time ).toUTCString();
     
-    let client_address = socket.upgradeReq.connection.remoteAddress;
-    let client_port    = socket.upgradeReq.connection.remotePort;
+    let client_address = tls_request.connection.remoteAddress;
+    let client_port    = tls_request.connection.remotePort;
     
     let message        = '[' + current_time_string + '] Client connected ' + client_address + ':' + client_port;
     
