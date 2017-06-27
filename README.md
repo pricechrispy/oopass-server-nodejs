@@ -2,11 +2,15 @@
 SPHINX Server for Node.js
 
 ## Requires
-* WebSocket (ws): https://github.com/websockets/ws
-* ArangoDB (arangojs): https://github.com/arangodb/arangojs
+* WebSocket v3.0.0 (ws): https://github.com/websockets/ws
+* ArangoDB v5.6.1 (arangojs): https://github.com/arangodb/arangojs
+* nodemailer v4.0.1: https://github.com/nodemailer/nodemailer
+* mmdb-reader v1.1.0: https://github.com/gosquared/mmdb-reader
 ```bash
 npm install ws
 npm install arangojs
+npm install nodemailer
+npm install mmdb-reader
 ```
 
 ## Usage
