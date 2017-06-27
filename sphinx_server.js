@@ -1,18 +1,19 @@
 
 
 
-// REQUIRE JS LIBS
-const lib_ecc = require('./lib_ecc.js');
-const crypto  = require('crypto');
-
+// REQUIRE EXTERNAL JS LIBS
+const lib_ecc = require('./lib_ecc.js'); // for ECC OPERATIONS
 
 
 // REQUIRE NECECESSARY MODULES
-const http     = require('http');
-const https    = require('https');
-const ws       = require('ws');
-const fs       = require('fs');
-const arangojs = require('arangojs');
+const crypto      = require('crypto'); // for CRYPTOGRAPHIC OPERATIONS
+const http        = require('http'); // for HTTP LISTENER
+const https       = require('https'); // for TLS LAYER
+const ws          = require('ws'); // for WEBSOCKETS
+const fs          = require('fs'); // for DISK I/O
+const arangojs    = require('arangojs'); // for DATABASE
+const nodemailer  = require('nodemailer'); // for EMAIL
+const mmdb_reader = require('mmdb-reader'); // for GEOIP
 
 
 // SETUP SERVER OPTIONS
@@ -40,6 +41,44 @@ const database_options = {
     collection: 'users',
     username:   'sphinx',
     password:   'sphinx'
+};
+const mail_options = {
+    host:     'smtp.gmail.com',
+    port:     465,
+    ssl:      true,
+    username: 'EMAIL ADDRESS',
+    password: 'EMAIL PASSWORD',
+    from:     'SPHINX <EMAIL ADDRESS>',
+    subject:  'SPHINX Account Login Notification',
+    text:     `
+This is a notice about recent use of your API-Key.
+
+--------------------------------------------------------------------------------
+    ___ip_use_list___
+--------------------------------------------------------------------------------
+
+If this activity is yours, please disregard this notice.
+
+Thanks,
+SPHINX TEAM
+              `,
+    html:     `
+This is a notice about recent use of your <span style="font-weight: bold;">API-Key</span>.
+<br>
+<br>
+<div style="padding: 8px 12px; background: #333333; color: #CCCCCC;">
+    ___ip_use_list___
+</div>
+<br>
+If this activity is yours, please disregard this notice.
+<br>
+<br>
+Thanks,<br>
+SPHINX TEAM
+              `
+};
+const geoip_options = {
+    city_database: '/usr/share/GeoIP/GeoLite2-City.mmdb'
 };
 
 
@@ -104,6 +143,83 @@ if ( listen_options.role === 'MASTER' )
         });
     }
 }
+
+
+
+/* GEOIP LOOKUP */
+
+let get_address_location = function( address )
+{
+    let geoip_reader = new mmdb_reader( geoip_options.city_database );
+    let geoip_lookup = geoip_reader.lookup( address );
+    
+    let result = {
+        text: ''
+    };
+
+    if ( geoip_lookup )
+    {
+        if ( geoip_lookup.country && geoip_lookup.country.iso_code )
+        {
+            result.country = geoip_lookup.country.iso_code;
+            result.text    = result.country;
+        }
+        else
+        {
+            result.text = 'Unknown Country';
+        }
+        
+        if ( geoip_lookup.subdivisions )
+        {
+            for ( let i = 0; i < geoip_lookup.subdivisions.length; i++ )
+            {
+                let subdivision = geoip_lookup.subdivisions[ i ];
+                
+                result.text = subdivision.iso_code + ', ' + result.text;
+            }
+        }
+
+        if ( geoip_lookup.city && geoip_lookup.city.names && geoip_lookup.city.names.en )
+        {
+            result.city = geoip_lookup.city.names.en;
+            
+            result.text = result.city + ', ' + result.text;
+        }
+    }
+    else
+    {
+        result.text = 'Unknown Location';
+    }
+    
+    return result;
+};
+
+
+
+/* MAILER */
+let mailer = nodemailer.createTransport({
+    host:   mail_options.host,
+    port:   mail_options.port,
+    secure: mail_options.ssl,
+    auth: {
+        user: mail_options.username,
+        pass: mail_options.password
+    }
+});
+
+let handle_mailer_result = function( error, info )
+{
+    if ( error )
+    {
+        console.log( 'Error has occured!' );
+        console.log( error );
+    }
+    else
+    {
+        console.log( 'Message was sent!' );
+        console.log( info );
+    }
+};
 
 
 
@@ -335,7 +451,19 @@ let handle_socket_pong = function( data ) {
 
 // Handle socket messages
 let handle_socket_data = function( data ) {
-    let message = 'Data received: "' + data.toString() + '"';
+    let current_time        = Date.now();
+    let current_time_string = new Date( current_time ).toUTCString();
+    
+    let tls_socket_peer_data = this._sender._socket._peername;
+    let client_address       = tls_socket_peer_data.address;
+    let client_port          = tls_socket_peer_data.port;
+    
+    let client_address_parts = client_address.split(':');
+    let client_address_ipv4  = client_address_parts.pop();
+    
+    let client_location      = get_address_location( client_address_ipv4 );
+    
+    let message = '[' + current_time_string + '] Data received from ' + client_address + ':' + client_port + ' (' + client_location.text + ') => "' + data.toString() + '"';
     
     console.log( message );
     
@@ -345,6 +473,29 @@ let handle_socket_data = function( data ) {
     {
         if ( listen_options.role === 'MASTER' )
         {
+            // handle api-key specific restrictions
+            
+            let client_location_mismatch = true;
+            
+            if ( client_location_mismatch )
+            {
+                let find_string    = '___ip_use_list___';
+                let replace_string = '[' + current_time_string + '] ' + client_address_ipv4 + ' logged in from ' + client_location.text;
+                
+                let test_message = {
+                    to:      'Chris <crprice***REMOVED***>',
+                    from:    mail_options.from,
+                    subject: mail_options.subject,
+                    text:    mail_options.text.replace( find_string, replace_string ),
+                    html:    mail_options.html.replace( find_string, replace_string )
+                };
+                
+                mailer.sendMail( test_message, handle_mailer_result );
+            }
+            
+            
+            // If passed restrictions, continue processing request
+            
             console.log( 'ROLE IS MASTER, DELEGATING REQUESTS TO SLAVES' );
             
             let slave_responses = new Array();
