@@ -84,6 +84,7 @@ const geoip_options = {
 
 
 /* PROGRAM ARGUMENTS */
+
 if ( process.argv.length >= 3 )
 {
     let program_first_argument  = process.argv[2];
@@ -119,6 +120,12 @@ if ( listen_options.role === 'MASTER' )
     
     console.log( 'SERVER CONFIGURED AS MASTER, SPAWNING SLAVES ' + listen_options.slave_count.toString() );
     
+    let handle_slave_exit = function( slave_number, code ) {
+        let message = 'ERROR: Slave ' + slave_number.toString() + ' => child process exited with code ' + code.toString();
+        
+        console.log( message );
+    };
+    
     for ( let i = 0; i < listen_options.slave_count; i++ )
     {
         let slave_number = i + 1;
@@ -129,18 +136,7 @@ if ( listen_options.role === 'MASTER' )
         let slave_options = [ script_name, slave_port, 'SLAVE' ];
         
         listen_options.slaves[ i ] = spawn( 'node', slave_options );
-        
-        //listen_options.slaves[ i ].stdout.on('data', (data) => {
-        //    console.log(`SLAVE ${slave_number} => stdout: ${data}`);
-        //});
-
-        //listen_options.slaves[ i ].stderr.on('data', (data) => {
-        //    console.log(`SLAVE ${slave_number} => stderr: ${data}`);
-        //});
-
-        listen_options.slaves[ i ].on('close', (code) => {
-            console.log(`SLAVE ${slave_number} => child process exited with code ${code}`);
-        });
+        listen_options.slaves[ i ].on( 'close', ( code ) => { handle_slave_exit( slave_number, code ); } );
     }
 }
 
@@ -148,8 +144,7 @@ if ( listen_options.role === 'MASTER' )
 
 /* GEOIP LOOKUP */
 
-let get_address_location = function( address )
-{
+let get_address_location = function( address ) {
     let geoip_reader = new mmdb_reader( geoip_options.city_database );
     let geoip_lookup = geoip_reader.lookup( address );
     
@@ -197,6 +192,7 @@ let get_address_location = function( address )
 
 
 /* MAILER */
+
 let mailer = nodemailer.createTransport({
     host:   mail_options.host,
     port:   mail_options.port,
@@ -207,8 +203,7 @@ let mailer = nodemailer.createTransport({
     }
 });
 
-let handle_mailer_result = function( error, info )
-{
+let handle_mailer_result = function( error, info ) {
     if ( error )
     {
         console.log( 'Error has occured!' );
@@ -318,7 +313,10 @@ let process_beta_response = async function( web_socket, user_hash, user_requeste
             console.log( 'Document not found' );
             
             // store new ctr record for user hash
-            let new_user_record = { _key: user_hash, ctr_offset: user_aes_ctr_offset };
+            let new_user_record = {
+                _key:       user_hash,
+                ctr_offset: user_aes_ctr_offset
+            };
             
             create_ctr_record( new_user_record );
         }
@@ -378,7 +376,11 @@ let update_ctr_record = async function( data ) {
     try {
         console.log( 'Attempting update of ' + data._key + ': ' + data.ctr_offset );
         
-        const response = await users.update( data._id, {ctr_offset: data.ctr_offset} );
+        let record_data_update = {
+            ctr_offset: data.ctr_offset
+        };
+        
+        const response = await users.update( data._id, record_data_update );
         
         console.log( 'Received response for update of ' + data._key + ': ' + data.ctr_offset );
         console.log( response );
@@ -388,33 +390,6 @@ let update_ctr_record = async function( data ) {
         console.log( err.stack );
     }
 };
-
-/*
-let get_ctr_records = async function() {
-    try {
-        const query  = arangojs.aql`
-            FOR user IN ${users}
-            RETURN user
-        `;
-        
-        const cursor = await db.query( query );
-        
-        let result = null;
-        
-        do {
-            result = await cursor.next();
-            
-            if ( typeof result != 'undefined' )
-            {
-                console.log( result );
-            }
-        } while ( typeof result != 'undefined' || result != null );
-    }
-    catch ( err ) {
-        console.log( err.stack );
-    }
-};
-*/
 
 
 
@@ -483,14 +458,14 @@ let handle_socket_data = function( data ) {
                 let replace_string = '[' + current_time_string + '] ' + client_address_ipv4 + ' logged in from ' + client_location.text;
                 
                 let test_message = {
-                    to:      'Chris <crprice***REMOVED***>',
+                    to:      '<USER EMAIL>',
                     from:    mail_options.from,
                     subject: mail_options.subject,
                     text:    mail_options.text.replace( find_string, replace_string ),
                     html:    mail_options.html.replace( find_string, replace_string )
                 };
                 
-                mailer.sendMail( test_message, handle_mailer_result );
+                //mailer.sendMail( test_message, handle_mailer_result );
             }
             
             
@@ -500,8 +475,7 @@ let handle_socket_data = function( data ) {
             
             let slave_responses = new Array();
             
-            let handle_slave_responses = function( web_socket )
-            {
+            let handle_slave_responses = function( web_socket ) {
                 console.log( '========================================' );
                 console.log( 'Received all slave responses' );
                 
@@ -524,7 +498,8 @@ let handle_socket_data = function( data ) {
                 let trusted_response       = '';
                 let trusted_response_count = 0;
                 
-                for ( var [ key, value ] of Object.entries( response_count ) ) {
+                for ( let [ key, value ] of Object.entries( response_count ) )
+                {
                     //console.log( key + ' ' + value );
                     
                     if ( value > trusted_response_count )
@@ -573,7 +548,7 @@ let handle_socket_data = function( data ) {
                         
                         let slave_data_array = slave_data.toString().split(',');
                         
-                        if ( slave_data_array.length === 2 )
+                        if ( slave_data === 'invalid' || slave_data_array.length === 2 )
                         {
                             slave_responses.push( slave_data );
                             
@@ -602,6 +577,7 @@ let handle_socket_data = function( data ) {
         }
         else
         {
+            // We are a slave: use master's alpha to generate the beta
             let x                     = data_array[0];
             let y                     = data_array[1];
             let user_hash             = data_array[2];
@@ -626,6 +602,8 @@ let handle_socket_data = function( data ) {
             else
             {
                 console.log( 'Point is NOT a member of curve' );
+                
+                this.send('invalid');
             }
         }
     }
@@ -665,6 +643,36 @@ let handle_socket_error = function( error ) {
 let connection_threshold          = 10;
 let connection_threshold_interval = 5000;
 let connections_by_address        = {};
+
+let reached_connection_threshold = function( client_address, current_time ) {
+    if ( !connections_by_address.hasOwnProperty( client_address ) )
+    {
+        connections_by_address[ client_address ] = new Array();
+    }
+    
+    connections_by_address[ client_address ].push( current_time );
+    
+    let total_connections = connections_by_address[ client_address ].length;
+    
+    if ( total_connections === connection_threshold )
+    {
+        console.log( 'ADDRESS REACHED CONNECTION THRESHOLD (' + client_address + ')' );
+        
+        let connection_time_first   = connections_by_address[ client_address ][ 0 ];
+        let connection_time_last    = connections_by_address[ client_address ][ total_connections - 1 ];
+        let connection_time_elapsed = connection_time_last - connection_time_first;
+        
+        console.log( 'Time elapsed between connections: ' + connection_time_elapsed.toString() + 'ms (' + client_address + ')' );
+        
+        // remove first (oldest) value
+        connections_by_address[ client_address ].shift();
+        
+        // If address connects too often in threshold period, assume service abuse
+        return connection_time_elapsed <= connection_threshold_interval;
+    }
+    
+    return false;
+};
 
 // Handle after server bound
 let handle_server_listen = function() {
@@ -706,61 +714,37 @@ let handle_server_connection = function( socket, tls_request ) {
     let current_time        = Date.now();
     let current_time_string = new Date( current_time ).toUTCString();
     
-    let client_address = tls_request.connection.remoteAddress;
-    let client_port    = tls_request.connection.remotePort;
+    let client_address      = tls_request.connection.remoteAddress;
+    let client_port         = tls_request.connection.remotePort;
     
-    let message        = '[' + current_time_string + '] Client connected ' + client_address + ':' + client_port;
+    let message = '[' + current_time_string + '] Client connected ' + client_address + ':' + client_port;
     
     console.log( message );
     
-    if ( !connections_by_address.hasOwnProperty( client_address ) )
+    if ( reached_connection_threshold( client_address, current_time ) )
     {
-        connections_by_address[ client_address ] = new Array();
+        console.log( 'SOCKET REACHED TOO MANY ATTEMPTS IN THRESHOLD, CLOSING SOCKET' + ' (' + client_address + ')' );
+        
+        socket.close();
+        return;
     }
-    
-    connections_by_address[ client_address ].push( current_time );
-    
-    let total_connections = connections_by_address[ client_address ].length;
-    
-    if ( total_connections == connection_threshold )
+    else
     {
-        console.log( 'ADDRESS REACHED CONNECTION THRESHOLD (' + client_address + ')' );
+        socket.on( 'open', handle_socket_open );
+        socket.on( 'headers', handle_socket_headers );
+        socket.on( 'ping', handle_socket_ping );
+        socket.on( 'pong', handle_socket_pong );
+        socket.on( 'message', handle_socket_data );
+        socket.on( 'close', handle_socket_close );
+        socket.on( 'unexpected-response', handle_socket_unexpected );
+        socket.on( 'error', handle_socket_error );
         
-        let connection_time_first = connections_by_address[ client_address ][ 0 ];
-        let connection_time_last  = connections_by_address[ client_address ][ total_connections - 1 ];
-        
-        let connection_time_elapsed = connection_time_last - connection_time_first;
-        console.log( 'Time elapsed between connections: ' + connection_time_elapsed + 'ms (' + client_address + ')' );
-        
-        // remove first (oldest) value
-        connections_by_address[ client_address ].shift();
-        
-        // If address connects too often in threshold period, assume service abuse
-        if ( connection_time_elapsed <= connection_threshold_interval )
-        {
-            console.log( 'SOCKET REACHED TOO MANY ATTEMPTS IN THRESHOLD, CLOSING SOCKET' + ' (' + client_address + ')' );
-            
-            socket.close();
-            return;
-        }
+        socket.send('__server_connected__');
     }
-    
-    socket.on( 'open', handle_socket_open );
-    socket.on( 'headers', handle_socket_headers );
-    socket.on( 'ping', handle_socket_ping );
-    socket.on( 'pong', handle_socket_pong );
-    socket.on( 'message', handle_socket_data );
-    socket.on( 'close', handle_socket_close );
-    socket.on( 'unexpected-response', handle_socket_unexpected );
-    socket.on( 'error', handle_socket_error );
-    
-    socket.send('__server_connected__');
 };
 
 // Handle server error
 let handle_server_error = function( error ) {
-    
-    
     throw error;
 };
 
@@ -769,7 +753,7 @@ let handle_server_error = function( error ) {
 
 // Handle normal https server requests (non-websocket)
 let handle_https_server_request = function( request, response ) {
-    
+    //ignore
 };
 
 
