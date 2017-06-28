@@ -166,10 +166,13 @@ let get_address_location = function( address ) {
         
         if ( geoip_lookup.subdivisions )
         {
+            result.subdivisions = new Array();
+            
             for ( let i = 0; i < geoip_lookup.subdivisions.length; i++ )
             {
                 let subdivision = geoip_lookup.subdivisions[ i ];
                 
+                result.subdivisions.push( subdivision );
                 result.text = subdivision.iso_code + ', ' + result.text;
             }
         }
@@ -177,7 +180,6 @@ let get_address_location = function( address ) {
         if ( geoip_lookup.city && geoip_lookup.city.names && geoip_lookup.city.names.en )
         {
             result.city = geoip_lookup.city.names.en;
-            
             result.text = result.city + ', ' + result.text;
         }
     }
@@ -213,6 +215,28 @@ let handle_mailer_result = function( error, info ) {
     {
         console.log( 'Message was sent!' );
         console.log( info );
+    }
+};
+
+let send_warning_email = async function( user_hash, current_time_string, client_address_ipv4, client_location ) {
+    let find_string    = '___ip_use_list___';
+    let replace_string = '[' + current_time_string + '] ' + client_address_ipv4 + ' logged in from ' + client_location.text;
+    
+    user_email = await get_email_record( user_hash );
+    
+    if ( user_email.length > 0 )
+    {
+        let warning_email = {
+            to:      user_email,
+            from:    mail_options.from,
+            subject: mail_options.subject,
+            text:    mail_options.text.replace( find_string, replace_string ),
+            html:    mail_options.html.replace( find_string, replace_string )
+        };
+        
+        console.log( 'MAIL DISABLED: WOULD SEND TO ' + user_email );
+        
+        //mailer.sendMail( warning_email, handle_mailer_result );
     }
 };
 
@@ -280,6 +304,7 @@ server_up_request.on('error', handle_request_error );
 server_up_request.end();
 
 
+// calculate beta from user data
 let process_beta_response = async function( web_socket, user_hash, user_requested_offset, alpha_decoded ) {
     let user_aes_ctr_offset = 0;
     
@@ -349,6 +374,8 @@ let process_beta_response = async function( web_socket, user_hash, user_requeste
     web_socket.send( beta );
 };
 
+
+// manage user data records
 let create_ctr_record = async function( data ) {
     try {
         console.log( 'Attempting save of ' + data._key + ': ' + data.ctr_offset );
@@ -391,32 +418,172 @@ let update_ctr_record = async function( data ) {
     }
 };
 
+let get_email_record = async function( user_hash ) {
+    try {
+        console.log( 'Attempting retreival of user_hash: ' + user_hash.toString() );
+        
+        const data = await users.document( user_hash );
+        
+        console.log( 'Received data for user_hash: ' + user_hash.toString() );
+        console.log( data );
+        
+        let user_email = '';
+        
+        if ( data.email )
+        {
+            console.log( 'Email Found: ' + data.email );
+            
+            user_email = data.email;
+        }
+        else
+        {
+            console.log( 'No email found' );
+        }
+        
+        return user_email;
+    }
+    catch ( err ) {
+        console.log( 'Error retreiving user_hash ' + user_hash.toString() + ': ' + err.errorNum.toString() );
+        
+        console.log( err.stack );
+    }
+};
+
+let create_email_record = async function( user_hash, user_email ) {
+    try {
+        console.log( 'Attempting retreival of user_hash: ' + user_hash.toString() );
+        
+        const data = await users.document( user_hash );
+        
+        console.log( 'Received data for user_hash: ' + user_hash.toString() );
+        console.log( data );
+        
+        if ( data.email )
+        {
+            console.log( 'Email already exists: not updating hash record' );
+        }
+        else
+        {
+            console.log( 'Attempting update of ' + data._key + ': ' + user_email );
+            
+            let record_data_update = {
+                email: user_email
+            };
+            
+            const response = await users.update( data._id, record_data_update );
+            
+            console.log( 'Received response for update of ' + data._key + ': ' + user_email );
+            console.log( response );
+        }
+    }
+    catch ( err ) {
+        console.log( 'Error creating email record ' + user_hash.toString() + ': ' + err.errorNum.toString() );
+        
+        console.log( err.stack );
+    }
+};
+
+let location_threshold = 5;
+
+let check_location_mismatch = async function( user_hash, current_time_string, client_address_ipv4, client_location ) {
+    let message = 'Checking location usage of ' + user_hash + ' at ' + client_location.text;
+    
+    console.log( message );
+    
+    try {
+        console.log( 'Attempting retreival of user_hash: ' + user_hash.toString() );
+        
+        const data = await users.document( user_hash );
+        
+        console.log( 'Received data for user_hash: ' + user_hash.toString() );
+        console.log( data );
+        
+        if ( data.locations )
+        {
+            console.log( 'Previously used locations found:' );
+            console.log( data.locations );
+            
+            let is_location_mismatch = true;
+            
+            for ( let i = 0; i < data.locations.length; i++ )
+            {
+                let old_location = data.locations[ i ];
+                
+                if ( client_location.text === old_location )
+                {
+                    is_location_mismatch = false;
+                    
+                    break;
+                }
+            }
+            
+            if ( data.locations.length === location_threshold )
+            {
+                if ( is_location_mismatch )
+                {
+                    console.log( 'Location seems invalid: sending warning email' );
+                    
+                    send_warning_email( user_hash, current_time_string, client_address_ipv4, client_location );
+                }
+                else
+                {
+                    console.log( 'Location seems valid' );
+                }
+            }
+            else
+            {
+                // save new location if not already in our list
+                if ( is_location_mismatch )
+                {
+                    console.log( 'Attempting update of ' + data._key + ': locations' );
+                    
+                    data.locations.push( client_location.text );
+                    
+                    let record_data_update = {
+                        locations: data.locations
+                    };
+                    
+                    const response = await users.update( data._id, record_data_update );
+                    
+                    console.log( 'Received response for update of ' + data._key + ': locations' );
+                    console.log( response );
+                }
+                else
+                {
+                    console.log( 'Location already exists in locations' );
+                }
+            }
+        }
+        else
+        {
+            console.log( 'Attempting creation of ' + data._key + ': locations' );
+            
+            let record_data_update = {
+                locations: new Array()
+            };
+            
+            record_data_update.locations.push( client_location.text );
+            
+            const response = await users.update( data._id, record_data_update );
+            
+            console.log( 'Received response for creation of ' + data._key + ': locations' );
+            console.log( response );
+        }
+    }
+    catch ( err ) {
+        console.log( 'Error checking location records ' + user_hash.toString() + ': ' + err.errorNum.toString() );
+        
+        console.log( err.stack );
+    }
+    
+    return true;
+};
+
 
 
 /* WEBSOCKET CLASS LISTENERS */
 
-let is_location_mismatch = function( current_time_string, client_address_ipv4, client_location ) {
-    return true;
-};
-
-let send_warning_email = function( current_time_string, client_address_ipv4, client_location ) {
-    let find_string    = '___ip_use_list___';
-    let replace_string = '[' + current_time_string + '] ' + client_address_ipv4 + ' logged in from ' + client_location.text;
-    
-    let test_message = {
-        to:      '<USER EMAIL>',
-        from:    mail_options.from,
-        subject: mail_options.subject,
-        text:    mail_options.text.replace( find_string, replace_string ),
-        html:    mail_options.html.replace( find_string, replace_string )
-    };
-    
-    //mailer.sendMail( test_message, handle_mailer_result );
-};
-
-let slave_responses = new Array();
-
-let handle_slave_responses = function( client_web_socket ) {
+let handle_slave_responses = function( client_web_socket, slave_responses ) {
     console.log( '========================================' );
     console.log( 'Received all slave responses' );
     
@@ -441,8 +608,6 @@ let handle_slave_responses = function( client_web_socket ) {
     
     for ( let [ key, value ] of Object.entries( response_count ) )
     {
-        //console.log( key + ' ' + value );
-        
         if ( value > trusted_response_count )
         {
             trusted_response_count = value;
@@ -456,9 +621,11 @@ let handle_slave_responses = function( client_web_socket ) {
     console.log( trusted_response );
     
     client_web_socket.send( trusted_response );
+    
+    return trusted_response;
 };
 
-let handle_slave_socket_data = function( client_web_socket, current_slave_connections, slave_number, slave_data ) {
+let handle_slave_socket_data = function( client_web_socket, slave_responses, current_slave_connections, slave_number, slave_data, user_hash, user_requested_email ) {
     let message = 'Data received from slave ' + slave_number.toString() + ' => "' + slave_data.toString() + '"';
     
     console.log( message );
@@ -473,7 +640,13 @@ let handle_slave_socket_data = function( client_web_socket, current_slave_connec
         // if we have collected all responses, choose the majority response
         if ( slave_responses.length === current_slave_connections )
         {
-            handle_slave_responses( client_web_socket );
+            let trusted_response = handle_slave_responses( client_web_socket, slave_responses );
+            
+            // Create the hash -> email assocation first time a hash is used
+            if ( trusted_response !== 'invalid' && user_requested_email.length > 0 )
+            {
+                create_email_record( user_hash, user_requested_email );
+            }
         }
     }
     else
@@ -483,28 +656,34 @@ let handle_slave_socket_data = function( client_web_socket, current_slave_connec
 };
 
 let process_data_role = function( client_web_socket, data, data_array, current_time_string, client_address_ipv4, client_location ) {
+    let x                     = data_array[0];
+    let y                     = data_array[1];
+    let user_hash             = data_array[2];
+    let user_requested_offset = data_array[3];
+    let user_requested_email  = data_array[4];
+    
+    console.log( 'RECEIVED X,Y CURVE POINTS (' + x + ', ' + y + ')' );
+    console.log( 'RECEIVED USER HASH: ' + user_hash );
+    console.log( 'RECEIVED REQUESTED OFFSET: ' + user_requested_offset );
+    console.log( 'RECEIVED REQUESTED EMAIL: ' + user_requested_email );
+    
     if ( listen_options.role === 'MASTER' )
     {
         // handle api-key specific restrictions
         
         // if we have determined location mismatch is above threshold
         // send a warning email asynchronously and still process request
-        
-        if ( is_location_mismatch( current_time_string, client_address_ipv4, client_location ) )
-        {
-            send_warning_email( current_time_string, client_address_ipv4, client_location );
-        }
+        check_location_mismatch( user_hash, current_time_string, client_address_ipv4, client_location );
         
         
         // If passed restrictions, continue processing request
-        
         console.log( 'ROLE IS MASTER, DELEGATING REQUESTS TO SLAVES' );
         
         // Delegate requests to chosen slaves
         // Most responded value will be chosen to defend against bad nodes
-        
         console.log( 'Current queue has pool: ' + listen_options.slave_pool );
         
+        let slave_responses = new Array();
         let current_slave_connections = 0;
         
         for ( let i = 0; i < listen_options.slaves.length; i++ )
@@ -529,7 +708,7 @@ let process_data_role = function( client_web_socket, data, data_array, current_t
                 let slave_connection = new ws( 'wss://localhost:' + slave_port, '', slave_connection_options );
                 
                 slave_connection.on( 'error', handle_socket_error );
-                slave_connection.on( 'message', ( slave_data ) => { handle_slave_socket_data( client_web_socket, current_slave_connections, slave_number, slave_data ); } );
+                slave_connection.on( 'message', ( slave_data ) => { handle_slave_socket_data( client_web_socket, slave_responses, current_slave_connections, slave_number, slave_data, user_hash, user_requested_email ); } );
                 slave_connection.on( 'open', () => { slave_connection.send( data ); } );
             }
             else
@@ -552,15 +731,6 @@ let process_data_role = function( client_web_socket, data, data_array, current_t
     else
     {
         // We are a slave: use master's alpha to generate the beta
-        let x                     = data_array[0];
-        let y                     = data_array[1];
-        let user_hash             = data_array[2];
-        let user_requested_offset = data_array[3];
-        
-        console.log( 'RECEIVED X,Y CURVE POINTS (' + x + ', ' + y + ')' );
-        console.log( 'RECEIVED USER HASH: ' + user_hash );
-        console.log( 'RECEIVED REQUESTED OFFSET: ' + user_requested_offset );
-        
         let alpha_decoded = lib_ecc.decodePoint( x, y );
         
         console.log( 'DECODED' );
@@ -630,8 +800,8 @@ let handle_socket_data = function( data ) {
     console.log( message );
     
     let data_array = data.toString().split(',');
-    
-    if ( data_array.length === 4 )
+
+    if ( data_array.length === 5 )
     {
         process_data_role( this, data, data_array, current_time_string, client_address_ipv4, client_location );
     }
