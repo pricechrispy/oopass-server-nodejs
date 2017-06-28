@@ -416,7 +416,7 @@ let send_warning_email = function( current_time_string, client_address_ipv4, cli
 
 let slave_responses = new Array();
 
-let handle_slave_responses = function( web_socket ) {
+let handle_slave_responses = function( client_web_socket ) {
     console.log( '========================================' );
     console.log( 'Received all slave responses' );
     
@@ -455,11 +455,11 @@ let handle_slave_responses = function( web_socket ) {
     console.log( 'Sending trusted Beta response back to client' );
     console.log( trusted_response );
     
-    web_socket.send( trusted_response );
+    client_web_socket.send( trusted_response );
 };
 
-let handle_slave_socket_data = function( slave_data ) {
-    let message = 'Data received from slave ' + slave_number.toString() + ' "' + slave_data.toString() + '"';
+let handle_slave_socket_data = function( client_web_socket, current_slave_connections, slave_number, slave_data ) {
+    let message = 'Data received from slave ' + slave_number.toString() + ' => "' + slave_data.toString() + '"';
     
     console.log( message );
     
@@ -482,7 +482,7 @@ let handle_slave_socket_data = function( slave_data ) {
     }
 };
 
-let process_data_role = function( client_web_socket, data, current_time_string, client_address_ipv4, client_location ) {
+let process_data_role = function( client_web_socket, data, data_array, current_time_string, client_address_ipv4, client_location ) {
     if ( listen_options.role === 'MASTER' )
     {
         // handle api-key specific restrictions
@@ -529,7 +529,7 @@ let process_data_role = function( client_web_socket, data, current_time_string, 
                 let slave_connection = new ws( 'wss://localhost:' + slave_port, '', slave_connection_options );
                 
                 slave_connection.on( 'error', handle_socket_error );
-                slave_connection.on( 'message', handle_slave_socket_data );
+                slave_connection.on( 'message', ( slave_data ) => { handle_slave_socket_data( client_web_socket, current_slave_connections, slave_number, slave_data ); } );
                 slave_connection.on( 'open', () => { slave_connection.send( data ); } );
             }
             else
@@ -571,13 +571,13 @@ let process_data_role = function( client_web_socket, data, current_time_string, 
         {
             console.log( 'Point is a member of curve' );
             
-            process_beta_response( this, user_hash, user_requested_offset, alpha_decoded );
+            process_beta_response( client_web_socket, user_hash, user_requested_offset, alpha_decoded );
         }
         else
         {
             console.log( 'Point is NOT a member of curve' );
             
-            this.send('invalid');
+            client_web_socket.send('invalid');
         }
     }
 };
@@ -633,7 +633,7 @@ let handle_socket_data = function( data ) {
     
     if ( data_array.length === 4 )
     {
-        process_data_role( this, data, current_time_string, client_address_ipv4, client_location );
+        process_data_role( this, data, data_array, current_time_string, client_address_ipv4, client_location );
     }
     else
     {
