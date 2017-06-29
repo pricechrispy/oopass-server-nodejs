@@ -1,5 +1,5 @@
 # sphinx-server-nodejs
-SPHINX Server for Node.js
+SPHINX Server for Node.js v8.1.2
 
 ## Requires
 * WebSocket v3.0.0 (ws): https://github.com/websockets/ws

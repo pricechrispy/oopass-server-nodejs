@@ -4,13 +4,14 @@
 // REQUIRE EXTERNAL JS LIBS
 const lib_ecc = require('./lib_ecc.js'); // for ECC OPERATIONS
 
-
-// REQUIRE NECECESSARY MODULES
+// REQUIRE CORE MODULES
 const crypto      = require('crypto'); // for CRYPTOGRAPHIC OPERATIONS
 const http        = require('http'); // for HTTP LISTENER
 const https       = require('https'); // for TLS LAYER
-const ws          = require('ws'); // for WEBSOCKETS
 const fs          = require('fs'); // for DISK I/O
+
+// REQUIRE THIRD-PARTY MODULES
+const ws          = require('ws'); // for WEBSOCKETS
 const arangojs    = require('arangojs'); // for DATABASE
 const nodemailer  = require('nodemailer'); // for EMAIL
 const mmdb_reader = require('mmdb-reader'); // for GEOIP
@@ -18,10 +19,11 @@ const mmdb_reader = require('mmdb-reader'); // for GEOIP
 
 // SETUP SERVER OPTIONS
 const script_name = 'sphinx_server.js';
-const tls_options = {
-    key:  fs.readFileSync('sphinx-test-key.pem'),
-    cert: fs.readFileSync('sphinx-test-cert.pem')
-};
+
+const connection_threshold          = 10;
+const connection_threshold_interval = 5000;
+const connections_by_address        = {};
+
 const listen_options = {
     port:        50000,
     role:        'MASTER',
@@ -29,11 +31,18 @@ const listen_options = {
     slaves:      new Array(),
     slave_pool:  'EVEN'
 };
+
+const tls_options = {
+    key:  fs.readFileSync('sphinx-test-key.pem'),
+    cert: fs.readFileSync('sphinx-test-cert.pem')
+};
+
 const aes_options = {
     algorithm: 'aes-256-ctr',
     key:       '123456789abcdef03456789abcdef012',
     plaintext: '00000000000000000000000000000000' // 256bits
 };
+
 const database_options = {
     host:       '127.0.0.1',
     port:       '8529',
@@ -42,6 +51,7 @@ const database_options = {
     username:   'sphinx',
     password:   'sphinx'
 };
+
 const mail_options = {
     host:     'smtp.gmail.com',
     port:     465,
@@ -77,6 +87,7 @@ Thanks,<br>
 SPHINX TEAM
               `
 };
+
 const geoip_options = {
     city_database: '/usr/share/GeoIP/GeoLite2-City.mmdb'
 };
@@ -842,9 +853,6 @@ let handle_socket_error = function( error ) {
 
 
 /* WEBSOCKET SERVER LISTENERS */
-let connection_threshold          = 10;
-let connection_threshold_interval = 5000;
-let connections_by_address        = {};
 
 let reached_connection_threshold = function( client_address, current_time ) {
     if ( !connections_by_address.hasOwnProperty( client_address ) )
