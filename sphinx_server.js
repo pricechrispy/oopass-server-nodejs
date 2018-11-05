@@ -1,5 +1,5 @@
 
-
+// See README.md
 
 // REQUIRE EXTERNAL JS LIBS
 const lib_ecc = require('./lib_ecc.js'); // for ECC OPERATIONS
@@ -19,6 +19,8 @@ const mmdb_reader = require('mmdb-reader'); // for GEOIP
 
 // SETUP SERVER OPTIONS
 const script_name = 'sphinx_server.js';
+const server_version = '2.0.0';
+const protocol_version = '2.0.*';
 
 const connection_threshold          = 10;
 const connection_threshold_interval = 5000;
@@ -37,10 +39,14 @@ const tls_options = {
     cert: fs.readFileSync('sphinx-test-cert.pem')
 };
 
-const aes_options = {
-    algorithm: 'aes-256-ctr',
-    key:       '123456789abcdef03456789abcdef012',
-    plaintext: '00000000000000000000000000000000' // 256bits
+//const aes_options = {
+//    algorithm: 'aes-256-ctr',
+//    key:       '123456789abcdef03456789abcdef012',
+//    plaintext: '00000000000000000000000000000000' // 256bits
+//};
+const hmac_options = {
+    algorithm:  'sha256',
+    key:        '123456789abcdef03456789abcdef012'
 };
 
 const database_options = {
@@ -316,8 +322,10 @@ server_up_request.end();
 
 
 // calculate beta from user data
-let process_beta_response = async function( web_socket, user_hash, user_requested_offset, alpha_decoded ) {
-    let user_aes_ctr_offset = 0;
+//let process_beta_response = async function( web_socket, user_hash, user_requested_offset, alpha_decoded ) {
+let process_beta_response = async function( web_socket, user_hash, alpha_decoded, user_requested_email ) {
+    //let user_aes_ctr_offset = 0;
+    let user_email = user_requested_email;
     
     try {
         console.log( 'Attempting retreival of user_hash: ' + user_hash.toString() );
@@ -327,19 +335,20 @@ let process_beta_response = async function( web_socket, user_hash, user_requeste
         console.log( 'Received data for user_hash: ' + user_hash.toString() );
         console.log( data );
         
-        user_aes_ctr_offset = data.ctr_offset;
-        
-        if ( user_aes_ctr_offset.toString() !== user_requested_offset )
-        {
-            console.log( 'DIFFERENT USER CTR OFFSET REQUESTED: ' + user_requested_offset );
-            
-            user_aes_ctr_offset = user_requested_offset;
-            
-            // update ctr record for user hash with requested value
-            data.ctr_offset = user_aes_ctr_offset;
-            
-            update_ctr_record( data );
-        }
+        user_email = data.email;
+        //user_aes_ctr_offset = data.ctr_offset;
+        //
+        //if ( user_aes_ctr_offset.toString() !== user_requested_offset )
+        //{
+        //    console.log( 'DIFFERENT USER CTR OFFSET REQUESTED: ' + user_requested_offset );
+        //    
+        //    user_aes_ctr_offset = user_requested_offset;
+        //    
+        //    // update ctr record for user hash with requested value
+        //    data.ctr_offset = user_aes_ctr_offset;
+        //    
+        //    update_ctr_record( data );
+        //}
     }
     catch ( err ) {
         console.log( 'Error retreiving record ' + user_hash.toString() + ': ' + err.errorNum.toString() );
@@ -350,8 +359,9 @@ let process_beta_response = async function( web_socket, user_hash, user_requeste
             
             // store new ctr record for user hash
             let new_user_record = {
-                _key:       user_hash,
-                ctr_offset: user_aes_ctr_offset
+                _key:   user_hash,
+                email:  user_email
+                //ctr_offset: user_aes_ctr_offset
             };
             
             create_ctr_record( new_user_record );
@@ -362,20 +372,31 @@ let process_beta_response = async function( web_socket, user_hash, user_requeste
         }
     }
     
-    console.log( 'Using CTR offset: ' + user_aes_ctr_offset.toString() );
+    //console.log( 'Using CTR offset: ' + user_aes_ctr_offset.toString() );
     
-    const sha_256 = crypto.createHash('sha256').update( user_hash + user_aes_ctr_offset.toString() );
-    let hash_ctr  = sha_256.digest().slice(0, 16); //buffer object, 16*8 = 128bit block size
+    //const sha_256 = crypto.createHash('sha256').update( user_hash + user_aes_ctr_offset.toString() );
+    //let hash_ctr  = sha_256.digest().slice(0, 16); //buffer object, 16*8 = 128bit block size
+    //
+    //console.log( 'User hash with offset: ' + hash_ctr.toString('hex') );
+    //
+    //const aes_ctr_256 = crypto.createCipheriv( aes_options.algorithm, aes_options.key, hash_ctr );
+    //let encrypted     = aes_ctr_256.update( aes_options.plaintext, 'utf8', 'hex' );
+    //
+    //let oprf_key = encrypted;
     
-    console.log( 'User hash with offset: ' + hash_ctr.toString('hex') );
+    console.log( 'Using email: ' + user_email );
     
-    const aes_ctr_256 = crypto.createCipheriv( aes_options.algorithm, aes_options.key, hash_ctr );
-    let encrypted     = aes_ctr_256.update( aes_options.plaintext, 'utf8', 'hex' );
+    // user email + user identifier
+    let hashForOPRF = user_email + user_hash;
     
-    let oprf_key = encrypted; //reduce modulo q
+    const hmac_sha256 = crypto.createHmac( hmac_options.algorithm, hmac_options.key );
+    hmac_sha256.update( hashForOPRF );
+    
+    let oprf_key = hmac_sha256.digest('hex');
     
     console.log( 'Calculated user OPRF key: ' + oprf_key );
     
+    //reduce modulo q
     let beta_key = new lib_ecc.BigInteger( oprf_key, 16 );
     let beta     = lib_ecc.encodePoint( alpha_decoded.multiply( beta_key ) );
     
@@ -389,11 +410,13 @@ let process_beta_response = async function( web_socket, user_hash, user_requeste
 // manage user data records
 let create_ctr_record = async function( data ) {
     try {
-        console.log( 'Attempting save of ' + data._key + ': ' + data.ctr_offset );
+        //console.log( 'Attempting save of ' + data._key + ': ' + data.ctr_offset );
+        console.log( 'Attempting save of ' + data._key );
         
         const response = await users.save( data );
         
-        console.log( 'Received response for save of ' + data._key + ': ' + data.ctr_offset );
+        //console.log( 'Received response for save of ' + data._key + ': ' + data.ctr_offset );
+        console.log( 'Received response for save of ' + data._key );
         console.log( response );
     }
     catch ( err ) {
@@ -670,12 +693,12 @@ let process_data_role = function( client_web_socket, data, data_array, current_t
     let x                     = data_array[0];
     let y                     = data_array[1];
     let user_hash             = data_array[2];
-    let user_requested_offset = data_array[3];
-    let user_requested_email  = data_array[4];
+    //let user_requested_offset = data_array[3];
+    let user_requested_email  = data_array[3];
     
     console.log( 'RECEIVED X,Y CURVE POINTS (' + x + ', ' + y + ')' );
     console.log( 'RECEIVED USER HASH: ' + user_hash );
-    console.log( 'RECEIVED REQUESTED OFFSET: ' + user_requested_offset );
+    //console.log( 'RECEIVED REQUESTED OFFSET: ' + user_requested_offset );
     console.log( 'RECEIVED REQUESTED EMAIL: ' + user_requested_email );
     
     if ( listen_options.role === 'MASTER' )
@@ -752,7 +775,8 @@ let process_data_role = function( client_web_socket, data, data_array, current_t
         {
             console.log( 'Point is a member of curve' );
             
-            process_beta_response( client_web_socket, user_hash, user_requested_offset, alpha_decoded );
+            //process_beta_response( client_web_socket, user_hash, user_requested_offset, alpha_decoded );
+            process_beta_response( client_web_socket, user_hash, alpha_decoded, user_requested_email );
         }
         else
         {
@@ -812,7 +836,7 @@ let handle_socket_data = function( data ) {
     
     let data_array = data.toString().split(',');
 
-    if ( data_array.length === 5 )
+    if ( data_array.length === 4 )
     {
         process_data_role( this, data, data_array, current_time_string, client_address_ipv4, client_location );
     }
@@ -949,7 +973,7 @@ let handle_server_connection = function( socket, tls_request ) {
         socket.on( 'unexpected-response', handle_socket_unexpected );
         socket.on( 'error', handle_socket_error );
         
-        socket.send('__server_connected__');
+        socket.send('__protocol_' + protocol_version + '_connected__');
     }
 };
 

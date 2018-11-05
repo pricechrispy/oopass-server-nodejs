@@ -1,11 +1,19 @@
 # sphinx-server-nodejs
-SPHINX Server for Node.js v8.1.2
+SPHINX NodeJS Server 2.0.0
+
+## Authors
+Christopher Price (crprice***REMOVED***)
+
+## License
+See LICENSE
 
 ## Requires
-* WebSocket v3.0.0 (ws): https://github.com/websockets/ws
-* ArangoDB v5.6.1 (arangojs): https://github.com/arangodb/arangojs
-* nodemailer v4.0.1: https://github.com/nodemailer/nodemailer
-* mmdb-reader v1.1.0: https://github.com/gosquared/mmdb-reader
+* Node.js v8.1.2 (Server)
+* ArrangoDB v3.1.23 (Database)
+* ws v3.0.0 (WebSocket): https://github.com/websockets/ws
+* arangojs v5.6.1 (Database Client): https://github.com/arangodb/arangojs
+* nodemailer v4.0.1 (Email Client): https://github.com/nodemailer/nodemailer
+* mmdb-reader v1.1.0 (GeoIP Reader): https://github.com/gosquared/mmdb-reader
 ```bash
 npm install ws
 npm install arangojs
