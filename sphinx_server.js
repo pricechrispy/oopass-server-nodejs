@@ -1,9 +1,6 @@
 
 // See README.md
 
-// REQUIRE EXTERNAL JS LIBS
-const lib_ecc = require('./lib_ecc.js'); // for ECC OPERATIONS
-
 // REQUIRE CORE MODULES
 const crypto      = require('crypto'); // for CRYPTOGRAPHIC OPERATIONS
 const http        = require('http'); // for HTTP LISTENER
@@ -15,6 +12,8 @@ const ws          = require('ws'); // for WEBSOCKETS
 const arangojs    = require('arangojs'); // for DATABASE
 const nodemailer  = require('nodemailer'); // for EMAIL
 const mmdb_reader = require('mmdb-reader'); // for GEOIP
+const BigInteger  = require('bigi'); // for LARGE INTS
+const ecurve      = require('ecurve'); // for ECC
 
 
 // SETUP SERVER OPTIONS
@@ -48,6 +47,8 @@ const hmac_options = {
     algorithm:  'sha256',
     key:        '123456789abcdef03456789abcdef012'
 };
+
+const ec_options = ecurve.getCurveByName('secp256k1');
 
 const database_options = {
     host:       '127.0.0.1',
@@ -322,8 +323,8 @@ server_up_request.end();
 
 
 // calculate beta from user data
-//let process_beta_response = async function( web_socket, user_hash, user_requested_offset, alpha_decoded ) {
-let process_beta_response = async function( web_socket, user_hash, alpha_decoded, user_requested_email ) {
+//let process_beta_response = async function( web_socket, user_hash, user_requested_offset, alpha_point ) {
+let process_beta_response = async function( web_socket, user_hash, alpha_point, user_requested_email ) {
     //let user_aes_ctr_offset = 0;
     let user_email = user_requested_email;
     
@@ -397,8 +398,18 @@ let process_beta_response = async function( web_socket, user_hash, alpha_decoded
     console.log( 'Calculated user OPRF key: ' + oprf_key );
     
     //reduce modulo q
-    let beta_key = new lib_ecc.BigInteger( oprf_key, 16 );
-    let beta     = lib_ecc.encodePoint( alpha_decoded.multiply( beta_key ) );
+    let beta_key = BigInteger.fromHex( oprf_key );
+    let beta_point = alpha_point.multiply( beta_key );
+      
+    console.log( 'beta.affineX: ' );
+    console.log( beta_point.affineX );
+    console.log( 'beta.affineY: ' );
+    console.log( beta_point.affineY );
+            
+    let beta_x = beta_point.affineX.toBuffer(32);
+    let beta_y = beta_point.affineY.toBuffer(32);
+    
+    let beta = beta_x.toString('hex') + ',' + beta_y.toString('hex');
     
     console.log( 'Sending Beta' );
     console.log( beta );
@@ -765,18 +776,24 @@ let process_data_role = function( client_web_socket, data, data_array, current_t
     else
     {
         // We are a slave: use master's alpha to generate the beta
-        let alpha_decoded = lib_ecc.decodePoint( x, y );
+        let alpha_x = BigInteger.fromHex( x );
+        let alpha_y = BigInteger.fromHex( y );
+        
+        let alpha_point = ecurve.Point.fromAffine( ec_options, alpha_x, alpha_y );
         
         console.log( 'DECODED' );
+        //console.log( alpha_x );
+        //console.log( alpha_y );
+        //console.log( alpha_point );
         
-        let is_hashed_pwd_point_member = lib_ecc.pointMember( alpha_decoded );
+        let is_hashed_pwd_point_member = ec_options.isOnCurve( alpha_point );
         
         if ( is_hashed_pwd_point_member )
         {
             console.log( 'Point is a member of curve' );
             
-            //process_beta_response( client_web_socket, user_hash, user_requested_offset, alpha_decoded );
-            process_beta_response( client_web_socket, user_hash, alpha_decoded, user_requested_email );
+            //process_beta_response( client_web_socket, user_hash, user_requested_offset, alpha_point );
+            process_beta_response( client_web_socket, user_hash, alpha_point, user_requested_email );
         }
         else
         {
