@@ -1,13 +1,34 @@
 {
-  "name": "sphinx-server-nodejs",
+  "name": "oopass-server-nodejs",
   "version": "2.0.0",
-  "description": "SPHINX NodeJS Server",
-  "main": "sphinx_server.js",
+  "description": "OOPASS NodeJS Server provides a server-side NodeJS implementation of the Oblivious Online PASSword management system utilizing the SPHINX protocol.",
+  "main": "server.js",
   "scripts": {
-    "start": "node sphinx_server.js 50199 SLAVE"
+    "test": "node server.js 50199 SLAVE",
+    "start": "node server.js 50199 MASTER 4"
   },
-  "author": "Christopher Price (crprice***REMOVED***)",
-  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pricechrispy/oopass-server-nodejs.git"
+  },
+  "keywords": [
+    "oopass",
+    "password",
+    "generator",
+    "manager",
+    "oblivous",
+    "sphinx",
+    "de-pake",
+    "pake",
+    "server",
+    "nodejs"
+  ],
+  "author": "Christopher Price (pricechrispy***REMOVED***, crprice***REMOVED***)",
+  "license": "AGPL-3.0-only",
+  "bugs": {
+    "url": "https://github.com/pricechrispy/oopass-server-nodejs/issues"
+  },
+  "homepage": "https://github.com/pricechrispy/oopass-server-nodejs#readme",
   "dependencies": {
     "arangojs": "^5.6.1",
     "ecurve": "^1.0.6",

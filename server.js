@@ -1,4 +1,15 @@
 
+/*
+OOPASS NodeJS Server
+Copyright (C) 2017-2019  Christopher Price (pricechrispy***REMOVED***, crprice***REMOVED***)
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, version 3.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along with this program. If not, see <https://www.gnu.org/licenses/>
+*/
+
 // See README.md
 
 // REQUIRE CORE MODULES
@@ -17,7 +28,7 @@ const ecurve      = require('ecurve'); // for ECC
 
 
 // SETUP SERVER OPTIONS
-const script_name = 'sphinx_server.js';
+const script_name = 'server.js';
 const server_version = '2.0.0';
 const protocol_version = '2.0.*';
 
@@ -34,8 +45,8 @@ const listen_options = {
 };
 
 const tls_options = {
-    key:  fs.readFileSync('sphinx-test-key.pem'),
-    cert: fs.readFileSync('sphinx-test-cert.pem')
+    key:  fs.readFileSync('oopass-test-key.pem'),
+    cert: fs.readFileSync('oopass-test-cert.pem')
 };
 
 //const aes_options = {
@@ -53,10 +64,10 @@ const ec_options = ecurve.getCurveByName('secp256k1');
 const database_options = {
     host:       '127.0.0.1',
     port:       '8529',
-    name:       'sphinx',
+    name:       'oopass',
     collection: 'users',
-    username:   'sphinx',
-    password:   'sphinx'
+    username:   'oopass',
+    password:   'oopass'
 };
 
 const mail_options = {
@@ -65,8 +76,8 @@ const mail_options = {
     ssl:      true,
     username: 'EMAIL ADDRESS',
     password: 'EMAIL PASSWORD',
-    from:     'SPHINX <EMAIL ADDRESS>',
-    subject:  'SPHINX Account Login Notification',
+    from:     'OOPASS <EMAIL ADDRESS>',
+    subject:  'OOPASS Account Login Notification',
     text:     `
 This is a notice about recent use of your API-Key.
 
@@ -77,7 +88,7 @@ This is a notice about recent use of your API-Key.
 If this activity is yours, please disregard this notice.
 
 Thanks,
-SPHINX TEAM
+OOPASS TEAM
               `,
     html:     `
 This is a notice about recent use of your <span style="font-weight: bold;">API-Key</span>.
@@ -91,7 +102,7 @@ If this activity is yours, please disregard this notice.
 <br>
 <br>
 Thanks,<br>
-SPHINX TEAM
+OOPASS TEAM
               `
 };
 
@@ -122,7 +133,7 @@ if ( process.argv.length >= 3 )
 }
 else
 {
-    console.log( 'Usage: node sphinx_server.js PORT SERVER_ROLE [SLAVE_COUNT]' );
+    console.log( 'Usage: node server.js PORT SERVER_ROLE [SLAVE_COUNT]' );
     console.log( 'SERVER_ROLE can be one of MASTER or SLAVE' );
     console.log( 'SLAVE_COUNT is the number of slaves to generate for a SERVER_ROLE of MASTER' );
     
