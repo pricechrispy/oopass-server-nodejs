@@ -23,7 +23,7 @@
     "server",
     "nodejs"
   ],
-  "author": "Christopher Price (pricechrispy***REMOVED***, crprice***REMOVED***)",
+  "author": "Christopher Price (pricechrispy, crprice)",
   "license": "AGPL-3.0-only",
   "bugs": {
     "url": "https://github.com/pricechrispy/oopass-server-nodejs/issues"

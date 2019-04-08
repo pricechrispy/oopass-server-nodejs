@@ -1,7 +1,7 @@
 
 /*
 OOPASS NodeJS Server
-Copyright (C) 2017-2019  Christopher Price (pricechrispy***REMOVED***, crprice***REMOVED***)
+Copyright (C) 2017-2019  Christopher Price (pricechrispy, crprice)
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, version 3.
 
