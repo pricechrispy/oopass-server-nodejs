@@ -30,10 +30,10 @@
   },
   "homepage": "https://github.com/pricechrispy/oopass-server-nodejs#readme",
   "dependencies": {
-    "arangojs": "^5.6.1",
+    "arangojs": "^5.8.0",
     "ecurve": "^1.0.6",
-    "mmdb-reader": "^1.1.0",
-    "nodemailer": "^4.0.1",
-    "ws": "^3.0.0"
+    "mmdb-reader": "^1.2.0",
+    "nodemailer": "^4.7.0",
+    "ws": "^3.3.3"
   }
 }
