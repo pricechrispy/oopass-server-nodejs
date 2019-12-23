@@ -62,6 +62,7 @@ const hmac_options = {
 const ec_options = ecurve.getCurveByName('secp256k1');
 
 const database_options = {
+    version:    30503,
     host:       '127.0.0.1',
     port:       '8529',
     name:       'oopass',
@@ -274,14 +275,15 @@ let send_warning_email = async function( user_hash, current_time_string, client_
 /* DATABASE */
 
 let database_config = {
-    url:          'http://' + database_options.host + ':' + database_options.port,
-    databaseName: database_options.name
+    url:            'http://' + database_options.host + ':' + database_options.port,
+    arangoVersion:  database_options.version
 };
 
 console.log( 'Attempting connection to database server' );
 console.log( database_config );
 
 const db = new arangojs.Database( database_config );
+db.useDatabase( database_options.name );
 db.useBasicAuth( database_options.username, database_options.password );
 
 const users = db.collection( database_options.collection );
