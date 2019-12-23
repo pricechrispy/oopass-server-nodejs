@@ -1,5 +1,5 @@
 # oopass-server-nodejs
-OOPASS NodeJS Server 2.0.0
+OOPASS NodeJS Server 2.0.1
 
 ## Description
 OOPASS NodeJS Server provides a server-side NodeJS implementation of the Oblivious Online PASSword management system utilizing the SPHINX protocol.
@@ -23,18 +23,28 @@ You should have received a copy of the GNU Affero General Public License along w
 See LICENSE.md
 
 ## Requires
-* Node.js v8.1.2 (Server): https://github.com/nodejs/node
-* ArangoDB v3.1.23 (Database): https://github.com/arangodb/arangodb
-* ws v3.0.0 (WebSocket): https://github.com/websockets/ws
-* arangojs v5.6.1 (Database Client): https://github.com/arangodb/arangojs
-* nodemailer v4.0.1 (Email Client): https://github.com/nodemailer/nodemailer
-* mmdb-reader v1.1.0 (GeoIP Reader): https://github.com/gosquared/mmdb-reader
+* Node.js v13.5.0 (Server): https://github.com/nodejs/node
+* ArangoDB v3.5.3 (Database): https://github.com/arangodb/arangodb
+* ws v7.2.1 (WebSocket): https://github.com/websockets/ws
+* arangojs v6.12.0 (Database Client): https://github.com/arangodb/arangojs
+* nodemailer v6.4.2 (Email Client): https://github.com/nodemailer/nodemailer
+* mmdb-reader v1.2.0 (GeoIP Reader): https://github.com/gosquared/mmdb-reader
 * ecurve v1.0.6 (ECC Operations): https://github.com/cryptocoinjs/ecurve/
 
 Also see package.json
 
 ## Usage
 ```bash
+# have npm pull dependencies
+npm install
+
+# Adjust options in server.js
+#   const tls_options
+#   const database_options
+#   const mail_options
+#   const geoip_options
+
+# start server
 node server.js PORT SERVER_ROLE [SLAVE_COUNT]
 ``` 
 

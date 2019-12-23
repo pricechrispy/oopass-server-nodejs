@@ -29,7 +29,7 @@ const ecurve      = require('ecurve'); // for ECC
 
 // SETUP SERVER OPTIONS
 const script_name = 'server.js';
-const server_version = '2.0.0';
+const server_version = '2.0.1';
 const protocol_version = '2.0.*';
 
 const connection_threshold          = 10;
