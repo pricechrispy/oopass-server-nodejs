@@ -29,7 +29,7 @@ const ecurve      = require('ecurve'); // for ECC
 
 // SETUP SERVER OPTIONS
 const script_name = 'server.js';
-const server_version = '2.0.1';
+const server_version = '2.1.0';
 const protocol_version = '2.0.*';
 
 const connection_threshold          = 10;
@@ -59,6 +59,7 @@ const hmac_options = {
     key:        '123456789abcdef03456789abcdef012'
 };
 
+// https://en.bitcoin.it/wiki/Secp256k1
 const ec_options = ecurve.getCurveByName('secp256k1');
 
 const database_options = {
@@ -386,6 +387,9 @@ let process_beta_response = async function( web_socket, user_hash, alpha_point, 
         }
     }
     
+    
+    // GENERATE OPRF KEY FOR USE IN BLINDING ALPHA
+    
     //console.log( 'Using CTR offset: ' + user_aes_ctr_offset.toString() );
     
     //const sha_256 = crypto.createHash('sha256').update( user_hash + user_aes_ctr_offset.toString() );
@@ -410,19 +414,26 @@ let process_beta_response = async function( web_socket, user_hash, alpha_point, 
     
     console.log( 'Calculated user OPRF key: ' + oprf_key );
     
-    //reduce modulo q
-    let beta_key = BigInteger.fromHex( oprf_key );
-    let beta_point = alpha_point.multiply( beta_key );
+    
+    // GENERATE BETA BY BLINDING ALPHA WITH OPRF KEY
+    
+    //generate beta = (alpha)^hashforbeta
+    // aka: beta=alpha^k
+    let oprf_key_bigi = BigInteger.fromHex( oprf_key );
+    let beta_point = alpha_point.multiply( oprf_key_bigi ); //ecc point multiplication alpha^k
       
-    console.log( 'beta.affineX: ' );
-    console.log( beta_point.affineX );
-    console.log( 'beta.affineY: ' );
-    console.log( beta_point.affineY );
+    //console.log( 'beta.affineX: ' );
+    //console.log( beta_point.affineX );
+    //console.log( 'beta.affineY: ' );
+    //console.log( beta_point.affineY );
             
     let beta_x = beta_point.affineX.toBuffer(32);
     let beta_y = beta_point.affineY.toBuffer(32);
     
     let beta = beta_x.toString('hex') + ',' + beta_y.toString('hex');
+    
+    
+    // SEND VALUES TO CLIENT
     
     console.log( 'Sending Beta' );
     console.log( beta );

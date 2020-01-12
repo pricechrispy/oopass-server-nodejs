@@ -1,5 +1,5 @@
 # oopass-server-nodejs
-OOPASS NodeJS Server 2.0.1
+OOPASS NodeJS Server 2.1.0
 
 ## Description
 OOPASS NodeJS Server provides a server-side NodeJS implementation of the Oblivious Online PASSword management system utilizing the SPHINX protocol.
