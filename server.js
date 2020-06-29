@@ -1,7 +1,7 @@
 
 /*
 OOPASS NodeJS Server
-Copyright (C) 2017-2019  Christopher Price (pricechrispy, crprice)
+Copyright (C) 2017-2020  Christopher Price (pricechrispy, crprice)
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, version 3.
 
@@ -29,7 +29,7 @@ const ecurve      = require('ecurve'); // for ECC
 
 // SETUP SERVER OPTIONS
 const script_name = 'server.js';
-const server_version = '2.1.0';
+const server_version = '2.1.1';
 const protocol_version = '2.0.*';
 
 const connection_threshold          = 10;
