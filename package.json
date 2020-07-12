@@ -1,11 +1,11 @@
 {
   "name": "oopass-server-nodejs",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "OOPASS NodeJS Server provides a server-side NodeJS implementation of the Oblivious Online PASSword management system utilizing the SPHINX protocol.",
   "main": "server.js",
   "scripts": {
-    "test": "node server.js 50199 SLAVE",
-    "start": "node server.js 50199 MASTER 4"
+    "test": "node server.js 51200 SLAVE",
+    "start": "node server.js 51200 MASTER 4"
   },
   "repository": {
     "type": "git",
@@ -34,6 +34,6 @@
     "ecurve": "^1.0.6",
     "mmdb-reader": "^1.2.0",
     "nodemailer": "^6.4.10",
-    "ws": "^7.3.0"
+    "ws": "^7.3.1"
   }
 }
