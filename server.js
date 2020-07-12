@@ -29,7 +29,7 @@ const ecurve      = require('ecurve'); // for ECC
 
 // SETUP SERVER OPTIONS
 const script_name = 'server.js';
-const server_version = '2.1.1';
+const server_version = '2.1.2';
 const protocol_version = '2.0.*';
 
 const connection_threshold          = 10;
@@ -63,7 +63,7 @@ const hmac_options = {
 const ec_options = ecurve.getCurveByName('secp256k1');
 
 const database_options = {
-    version:    30503,
+    version:    30604,
     host:       '127.0.0.1',
     port:       '8529',
     name:       'oopass',

@@ -1,5 +1,5 @@
 # oopass-server-nodejs
-OOPASS NodeJS Server 2.1.1
+OOPASS NodeJS Server 2.1.2
 
 ## Description
 OOPASS NodeJS Server provides a server-side NodeJS implementation of the Oblivious Online PASSword management system utilizing the SPHINX protocol.
@@ -23,11 +23,11 @@ You should have received a copy of the GNU Affero General Public License along w
 See LICENSE.md
 
 ## Requires
-* Node.js v13.5.0 (Server): https://github.com/nodejs/node
-* ArangoDB v3.5.3 (Database): https://github.com/arangodb/arangodb
-* ws v7.2.1 (WebSocket): https://github.com/websockets/ws
-* arangojs v6.12.0 (Database Client): https://github.com/arangodb/arangojs
-* nodemailer v6.4.2 (Email Client): https://github.com/nodemailer/nodemailer
+* Node.js v14.5.0 (Server): https://github.com/nodejs/node
+* ArangoDB v3.6.4 (Database): https://github.com/arangodb/arangodb
+* ws v7.3.1 (WebSocket): https://github.com/websockets/ws
+* arangojs v6.14.1 (Database Client): https://github.com/arangodb/arangojs
+* nodemailer v6.4.10 (Email Client): https://github.com/nodemailer/nodemailer
 * mmdb-reader v1.2.0 (GeoIP Reader): https://github.com/gosquared/mmdb-reader
 * ecurve v1.0.6 (ECC Operations): https://github.com/cryptocoinjs/ecurve/
 
